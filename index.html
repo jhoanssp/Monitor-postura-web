@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PosturaML — Monitor de Postura</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- MediaPipe Pose -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <!-- ONNX Runtime Web -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ CONSENT MODAL -->
+<div id="consent-overlay" class="overlay active">
+  <div class="modal-box">
+    <div class="modal-icon">🔒</div>
+    <h2>Consentimiento Informado</h2>
+    <p>Este sistema analiza tu postura corporal en tiempo real usando la cámara de tu dispositivo.</p>
+    <ul>
+      <li>Solo se almacenan <strong>landmarks del esqueleto</strong>, nunca imágenes de tu rostro.</li>
+      <li>Se usa un <strong>UUID anónimo</strong> — no se recopilan datos personales.</li>
+      <li>Los datos sirven para <strong>investigación académica</strong> sobre ergonomía.</li>
+      <li>Puedes detener el monitoreo en cualquier momento.</li>
+    </ul>
+    <div class="modal-actions">
+      <button id="btn-accept" class="btn-primary">Acepto y continuar</button>
+      <button id="btn-decline" class="btn-ghost">No acepto</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ MAIN APP -->
+<div id="app" class="hidden">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <span class="logo-icon">⬡</span>
+      <span class="logo-text">PosturaML</span>
+    </div>
+    <div class="header-badges">
+      <span id="badge-modelo" class="badge badge-frontal">FRONTAL</span>
+      <span id="badge-switch" class="badge badge-neutral">AUTO</span>
+      <span id="badge-db" class="badge badge-db">DB ●</span>
+    </div>
+    <div class="header-uuid">
+      <span class="uuid-label">ID:</span>
+      <span id="display-uuid" class="uuid-val">—</span>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT -->
+  <main>
+
+    <!-- ── COLUMNA IZQUIERDA: CÁMARA ── -->
+    <section class="cam-section">
+      <div class="cam-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas-pose"></canvas>
+
+        <!-- HUD overlay -->
+        <div class="hud">
+          <div id="hud-postura" class="hud-postura">—</div>
+          <div class="hud-row">
+            <span id="hud-conf" class="hud-chip">conf: —</span>
+            <span id="hud-dx" class="hud-chip">dx: —</span>
+            <span id="hud-switch-bar-label" class="hud-chip hud-switch hidden">→ —</span>
+          </div>
+          <div id="switch-progress-wrap" class="switch-progress-wrap hidden">
+            <div id="switch-progress-bar" class="switch-progress-bar"></div>
+          </div>
+        </div>
+
+        <!-- Skeleton-only canvas (para capturas del dataset) -->
+        <canvas id="canvas-skeleton" class="hidden"></canvas>
+      </div>
+
+      <!-- Controles de cámara -->
+      <div class="cam-controls">
+        <button id="btn-start" class="btn-primary">▶ Iniciar</button>
+        <button id="btn-stop"  class="btn-danger hidden">■ Detener</button>
+        <button id="btn-blur"  class="btn-secondary" title="Difuminar rostro">🔓 Blur</button>
+        <button id="btn-capture" class="btn-secondary" title="Capturar esqueleto ahora">📸 Capturar</button>
+        <select id="select-cam" class="cam-select"></select>
+      </div>
+    </section>
+
+    <!-- ── COLUMNA DERECHA: STATS ── -->
+    <aside class="stats-panel">
+
+      <!-- Estado principal -->
+      <div class="stat-card stat-main">
+        <div class="stat-label">Postura detectada</div>
+        <div id="stat-postura" class="stat-big">—</div>
+        <div id="stat-estado" class="stat-estado">—</div>
+      </div>
+
+      <!-- Grid de métricas -->
+      <div class="stat-grid">
+        <div class="stat-mini">
+          <div class="stat-mini-label">Confianza</div>
+          <div id="stat-conf" class="stat-mini-val">—</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-label">Modelo activo</div>
+          <div id="stat-modelo" class="stat-mini-val">—</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-label">dx hombros</div>
+          <div id="stat-dx" class="stat-mini-val">—</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-label">Tiempo sesión</div>
+          <div id="stat-tiempo" class="stat-mini-val">0s</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-label">Frames</div>
+          <div id="stat-frames" class="stat-mini-val">0</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-label">Capturas DB</div>
+          <div id="stat-capturas" class="stat-mini-val">0</div>
+        </div>
+      </div>
+
+      <!-- Barra de confianza -->
+      <div class="conf-bar-wrap">
+        <div class="conf-bar-label">Nivel de confianza</div>
+        <div class="conf-bar-track">
+          <div id="conf-bar-fill" class="conf-bar-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Historial -->
+      <div class="historial-wrap">
+        <div class="historial-label">Últimas detecciones</div>
+        <div id="historial-list" class="historial-list"></div>
+      </div>
+
+      <!-- Switch info -->
+      <div class="switch-info" id="switch-info-panel">
+        <div class="switch-info-label">Switch automático</div>
+        <div id="switch-info-val" class="switch-info-val">Estable</div>
+        <div class="switch-thresholds">
+          <span>Frontal si dx &gt; 0.15</span>
+          <span>Lateral si dx &lt; 0.10</span>
+          <span>Delay: 10s</span>
+        </div>
+      </div>
+
+      <!-- Guardado dataset -->
+      <div class="dataset-wrap">
+        <div class="dataset-label">Dataset</div>
+        <div class="dataset-row">
+          <span class="dataset-mini-label">Próxima captura en</span>
+          <span id="dataset-countdown" class="dataset-countdown">—</span>
+        </div>
+        <button id="btn-export-csv" class="btn-secondary btn-full">⬇ Exportar CSV sesión</button>
+      </div>
+
+    </aside>
+  </main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
