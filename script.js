@@ -1,10 +1,28 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// script.js — Monitor de Postura Web v3.1
-// FIX: clasificar() ya no usa window.poseLib — usa tabla fija POSE_LM_INDEX
-// NUEVO: modo lateral-frontal, notificaciones Telegram completas
+// script.js — Monitor de Posturas Web v3.2
+// Token cifrado internamente — El usuario solo provee su Chat ID
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ── Tabla fija de índices MediaPipe Pose (33 landmarks) ──────────────────
+// ── Credenciales ofuscadas (XOR key=73 + Base64) ─────────────────────────
+const _TK = "cX99fH9weH59enMICA4oGiQnGTAZBhEQER0nGQUuJTF5EwUAAxk+Bn8fDRg5Og==";
+const _BN = "CSQgFjkmOj08OygWKyY9";  // @mi_postura_bot
+
+function _dec(s) {
+  const k   = 73;
+  const raw = atob(s);
+  return Array.from(raw).map(c => String.fromCharCode(c.charCodeAt(0) ^ k)).join("");
+}
+
+const BOT_TOKEN    = _dec(_TK);
+const BOT_USERNAME = _dec(_BN);  // "@mi_postura_bot"
+
+// ── Configuración Telegram ────────────────────────────────────────────────
+const TG = {
+  CHAT_ID: localStorage.getItem("tg_chat_id") || "",
+  get enabled() { return !!this.CHAT_ID; },
+};
+
+// ── Tabla fija de índices MediaPipe Pose ──────────────────────────────────
 const POSE_LM_INDEX = {
   NOSE:0, LEFT_EYE_INNER:1, LEFT_EYE:2, LEFT_EYE_OUTER:3,
   RIGHT_EYE_INNER:4, RIGHT_EYE:5, RIGHT_EYE_OUTER:6,
@@ -22,23 +40,15 @@ const POSE_LM_INDEX = {
   LEFT_FOOT_INDEX:31, RIGHT_FOOT_INDEX:32,
 };
 
-// ── Configuración Telegram ────────────────────────────────────────────────
-const TG = {
-  BOT_TOKEN: localStorage.getItem("tg_bot_token") || "",
-  CHAT_ID:   localStorage.getItem("tg_chat_id")   || "",
-  BOT_NAME:  localStorage.getItem("tg_bot_name")  || "",
-  get enabled() { return !!(this.BOT_TOKEN && this.CHAT_ID); },
-};
-
 // ── Parámetros switch automático ──────────────────────────────────────────
 const UMBRAL_FRONTAL  = 0.15;
 const UMBRAL_LATERAL  = 0.10;
 const SWITCH_DELAY_MS = 10000;
 
 // ── Parámetros alertas Telegram ───────────────────────────────────────────
-const MALA_SEG        = 20;
-const COOLDOWN_MS     = 120000;
-const POSTURA_OK      = "TUP";
+const MALA_SEG    = 20;
+const COOLDOWN_MS = 120000;
+const POSTURA_OK  = "TUP";
 
 // ── Etiquetas y consejos ──────────────────────────────────────────────────
 const ETIQUETAS = {
@@ -48,6 +58,7 @@ const ETIQUETAS = {
   TLL: "Inclinado izquierda ⚠️",
   TLR: "Inclinado derecha ⚠️",
 };
+
 const CONSEJOS = {
   TLF: "Lleva la espalda al respaldo y levanta el monitor.",
   TLB: "Siéntate más erguido; evita recostarte mientras trabajas.",
@@ -56,19 +67,19 @@ const CONSEJOS = {
 };
 
 // ── Estado global ─────────────────────────────────────────────────────────
-let modelos       = {};
-let modoActivo    = "auto";
-let tipoActual    = "frontal";
-let switchCand    = null;
-let switchTS      = null;
+let modelos         = {};
+let modoActivo      = "auto";
+let tipoActual      = "frontal";
+let switchCand      = null;
+let switchTS        = null;
 let deteccionActiva = false;
-let camera        = null;
-let pose          = null;
-let sesionInicio  = null;
-let conteoPost    = {};
-let tMalaInicio   = null;
-let ultimaAlerta  = {};
-let alertasEnv    = 0;
+let camera          = null;
+let pose            = null;
+let sesionInicio    = null;
+let conteoPost      = {};
+let tMalaInicio     = null;
+let ultimaAlerta    = {};
+let alertasEnv      = 0;
 
 // ─────────────────────────────────────────────────────────────────────────
 // CARGA DE MODELOS ONNX
@@ -91,42 +102,36 @@ async function cargarModelos() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// INFERENCIA — CORRECCIÓN DEL ERROR FATAL
-// Extrae features directamente por índice numérico, sin window.poseLib
+// INFERENCIA
 // ─────────────────────────────────────────────────────────────────────────
 async function clasificar(landmarks, tipo) {
   const m = modelos[tipo];
   if (!m) return null;
   const { sess_sc, sess_m, meta } = m;
-
-  // Construir vector de features
   const feat = new Float32Array(meta.feature_names.length);
+  
   for (let i = 0; i < meta.feature_names.length; i++) {
-    const fname = meta.feature_names[i];           // ej: "left_shoulder_x"
+    const fname = meta.feature_names[i];
     const parts = fname.split("_");
-    const coord = parts.pop();                      // "x" | "y" | "z"
-    const lmKey = parts.join("_").toUpperCase();    // "LEFT_SHOULDER"
+    const coord = parts.pop();
+    const lmKey = parts.join("_").toUpperCase();
     const idx   = POSE_LM_INDEX[lmKey];
     if (idx !== undefined && landmarks[idx]) {
       feat[i] = landmarks[idx][coord] ?? 0;
     }
   }
-
-  // Escalar
+  
   const tIn     = new ort.Tensor("float32", feat, [1, feat.length]);
   const scaled  = await sess_sc.run({ float_input: tIn });
   const tScaled = scaled[Object.keys(scaled)[0]];
-
-  // Clasificar
   const result  = await sess_m.run({ float_input: tScaled });
-
-  // Buscar output de probabilidades (dims [1, n_clases])
+  
   const probaKey = Object.keys(result).find(k => {
     const d = result[k].dims;
     return d && d.length === 2 && d[0] === 1;
   });
   if (!probaKey) return null;
-
+  
   const proba = result[probaKey].data;
   let maxP = -1, maxI = 0;
   for (let i = 0; i < proba.length; i++) {
@@ -148,6 +153,7 @@ function evaluarSwitch(dx) {
   let cand = dx > UMBRAL_FRONTAL ? "frontal" : dx < UMBRAL_LATERAL ? "lateral" : null;
   if (!cand || cand === tipoActual) { switchCand = null; switchTS = null; return; }
   if (switchCand !== cand) { switchCand = cand; switchTS = Date.now(); return; }
+  
   if (Date.now() - switchTS >= SWITCH_DELAY_MS) {
     tipoActual = cand;
     switchCand = null; switchTS = null;
@@ -173,17 +179,12 @@ async function procesarFrame(landmarks) {
   }
   const dx = calcDx(landmarks);
   if (dx !== null) evaluarSwitch(dx);
-
   const tipo = tipoEfectivo();
   let res = null;
-  try {
-    res = await clasificar(landmarks, tipo);
-  } catch(e) {
-    agregarLog(`⚠ Inferencia: ${e.message}`);
-    return;
-  }
+  try { res = await clasificar(landmarks, tipo); }
+  catch(e) { agregarLog(`⚠ Inferencia: ${e.message}`); return; }
   if (!res) return;
-
+  
   const { clase, confianza } = res;
   conteoPost[clase] = (conteoPost[clase] || 0) + 1;
   mostrarEstado(clase, clase === POSTURA_OK, confianza, dx, tipo);
@@ -191,13 +192,25 @@ async function procesarFrame(landmarks) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// TIEMPO MALA POSTURA + ALERTA TG
+// TIEMPO MALA POSTURA
 // ─────────────────────────────────────────────────────────────────────────
 function tickMala(esMala, clase) {
-  if (!esMala) { tMalaInicio = null; actualizarBarra(0); return; }
+  const visAlert = document.getElementById("visual-alert");
+  if (!esMala) { 
+    tMalaInicio = null; 
+    actualizarBarra(0); 
+    if (visAlert) visAlert.classList.add("hidden");
+    return; 
+  }
   if (!tMalaInicio) tMalaInicio = Date.now();
   const segs = (Date.now() - tMalaInicio) / 1000;
   actualizarBarra(segs);
+  
+  // Alerta en pantalla si supera la mitad del tiempo límite
+  if (segs >= MALA_SEG / 2 && visAlert) {
+    visAlert.classList.remove("hidden");
+  }
+  
   if (segs >= MALA_SEG) {
     const ult = ultimaAlerta[clase] || 0;
     if (Date.now() - ult >= COOLDOWN_MS) {
@@ -208,41 +221,74 @@ function tickMala(esMala, clase) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// TELEGRAM
+// TELEGRAM API
 // ─────────────────────────────────────────────────────────────────────────
 async function tgSend(text) {
   if (!TG.enabled) return false;
   try {
     const r = await fetch(
-      `https://api.telegram.org/bot${TG.BOT_TOKEN}/sendMessage`,
-      { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ chat_id: TG.CHAT_ID, text, parse_mode:"HTML" }) }
+      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: TG.CHAT_ID, text, parse_mode: "HTML" }) }
     );
     const d = await r.json();
     return d.ok;
   } catch(e) { return false; }
 }
 
-async function tgGetMe() {
-  // Obtiene el nombre del bot desde la API (no requiere chat_id)
-  if (!TG.BOT_TOKEN) return null;
+// Auto-detectar Chat ID usando el token interno
+async function autoDetectarChatId(btnEl) {
+  if (btnEl) { btnEl.textContent = "⏳ Buscando..."; btnEl.disabled = true; }
   try {
-    const r = await fetch(`https://api.telegram.org/bot${TG.BOT_TOKEN}/getMe`);
+    const r = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=10&offset=-10`
+    );
     const d = await r.json();
-    if (d.ok) return d.result;
-  } catch(e) {}
-  return null;
+    if (!d.ok) {
+      mostrarToast("❌ Error al consultar el bot. Intenta de nuevo.");
+      return null;
+    }
+    if (!d.result || d.result.length === 0) {
+      mostrarToast("⚠ Sin mensajes. Envía un texto o /start al bot primero.");
+      return null;
+    }
+    const last = d.result[d.result.length - 1];
+    const chat = last.message?.chat || last.callback_query?.message?.chat;
+    if (!chat) {
+      mostrarToast("No se detectó Chat ID. Envía un mensaje válido.");
+      return null;
+    }
+    const chatId = String(chat.id);
+    
+    // Rellenar dinámicamente ambos campos en la interfaz
+    ["tg-chat-id-modal", "tg-chat-id-sidebar"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = chatId;
+    });
+    mostrarToast(`✅ Chat ID detectado: ${chatId}`);
+    return chatId;
+  } catch(e) {
+    mostrarToast(`❌ Error de red: ${e.message}`);
+    return null;
+  } finally {
+    if (btnEl) { btnEl.textContent = btnEl.id === "btn-autodetect-sb" ? "🔍" : "🔍 Detectar"; btnEl.disabled = false; }
+  }
+}
+
+function guardarChatId(chatId) {
+  localStorage.setItem("tg_chat_id", chatId);
+  TG.CHAT_ID = chatId;
 }
 
 async function enviarConexionOk() {
   const msg =
-    `✅ <b>Monitor de Postura conectado</b>\n\n` +
+    `✅ <b>Monitor de Posturas Web — Conectado</b>\n\n` +
     `📅 ${new Date().toLocaleString("es-EC")}\n` +
     `🌐 Sistema listo para monitorear tu postura.\n` +
     `⏱ Recibirás alertas si mantienes mala postura por más de ${MALA_SEG}s.`;
   const ok = await tgSend(msg);
   if (ok) agregarLog("📬 TG: notificación de conexión enviada");
-  else    agregarLog("⚠ TG: no se pudo notificar (revisa config)");
+  else    agregarLog("⚠ TG: sin Chat ID configurado (opcional)");
 }
 
 async function enviarAlertaTG(clase, segs) {
@@ -252,39 +298,40 @@ async function enviarAlertaTG(clase, segs) {
     `📌 Postura: <b>${ETIQUETAS[clase] || clase}</b>\n` +
     `⏱ Duración: <b>${segs} segundos</b> consecutivos\n\n` +
     `💡 ${CONSEJOS[clase] || ""}\n\n` +
-    `🕐 ${new Date().toLocaleTimeString("es-EC")}`;
+    ` Romano-Time: 🕐 ${new Date().toLocaleTimeString("es-EC")}`;
   await tgSend(msg);
   agregarLog(`📬 TG: alerta ${clase} (${segs}s)`);
 }
 
 async function enviarResumen() {
   if (!sesionInicio) return;
-  const durS = Math.round((Date.now() - sesionInicio) / 1000);
-  const total = Object.values(conteoPost).reduce((a,b)=>a+b,0) || 1;
+  const durS  = Math.round((Date.now() - sesionInicio) / 1000);
+  const total = Object.values(conteoPost).reduce((a,b) => a+b, 0) || 1;
   const sorted = Object.entries(conteoPost)
     .filter(([k]) => k !== POSTURA_OK)
     .sort(([,a],[,b]) => b - a);
-
-  let lineas = sorted.slice(0,3).map(([k,v]) => {
-    const pct = ((v/total)*100).toFixed(1);
+  let lineas = sorted.slice(0, 3).map(([k, v]) => {
+    const pct = ((v / total) * 100).toFixed(1);
     return `  • <b>${ETIQUETAS[k]||k}</b> — ${pct}%\n    💡 ${CONSEJOS[k]||""}`;
   }).join("\n");
-  if (!lineas) lineas = "  ¡Sin posturas problemáticas! 🎉";
-
-  const pctOk = (((conteoPost[POSTURA_OK]||0)/total)*100).toFixed(1);
+  if (!lineas) lineas = "  ¡Sin posturas problemáticas detectadas! 🎉";
+  
+  const pctOk = (((conteoPost[POSTURA_OK]||0) / total) * 100).toFixed(1);
+  const emoji = parseFloat(pctOk) >= 75 ? "🟢" : parseFloat(pctOk) >= 50 ? "🟡" : "🔴";
   const msg =
     `📊 <b>Resumen de Sesión</b>\n\n` +
     `⏱ Duración: <b>${Math.floor(durS/60)}m ${durS%60}s</b>\n` +
-    `✅ Postura correcta: <b>${pctOk}%</b>\n` +
+    `${emoji} Postura correcta: <b>${pctOk}%</b>\n` +
     `🚨 Alertas enviadas: ${alertasEnv}\n\n` +
     `<b>Posturas a mejorar:</b>\n${lineas}\n\n` +
+    `💡 Mantén una rutina de pausas activas cada 30 minutos.\n` +
     `📅 ${new Date().toLocaleString("es-EC")}`;
   const ok = await tgSend(msg);
-  if (ok) agregarLog("📬 TG: resumen enviado");
+  if (ok) agregarLog("📬 TG: resumen de sesión enviado");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// UI
+// INTERFAZ DE USUARIO (UI)
 // ─────────────────────────────────────────────────────────────────────────
 function mostrarEstado(clase, esOk, confianza, dx, tipo) {
   const el = document.getElementById("postura-label");
@@ -294,12 +341,10 @@ function mostrarEstado(clase, esOk, confianza, dx, tipo) {
   }
   const c = document.getElementById("confianza-label");
   if (c) c.textContent = confianza ? `${(confianza*100).toFixed(0)}%` : "—";
-  const d = document.getElementById("dx-label");
-  if (d && dx != null) d.textContent = `dx: ${dx.toFixed(3)}`;
+  const dEl = document.getElementById("dx-label");
+  if (dEl && dx != null) dEl.textContent = `dx: ${dx.toFixed(3)}`;
   const m = document.getElementById("modo-activo-label");
-  if (m) m.textContent = modoActivo === "auto"
-    ? `AUTO:${tipoActual.toUpperCase()}`
-    : modoActivo.toUpperCase().replace("-"," ");
+  if (m) m.textContent = modoActivo === "auto" ? `AUTO:${tipoActual.toUpperCase()}` : modoActivo.toUpperCase().replace("-"," ");
 }
 
 function actualizarBarra(segs) {
@@ -315,8 +360,7 @@ function actualizarBarra(segs) {
 function actualizarBadge() {
   const b = document.getElementById("badge-modo");
   if (!b) return;
-  const labels = { auto:"🔄 AUTO", frontal:"🖥 FRONTAL",
-                   lateral:"📐 LATERAL", "lateral-frontal":"📐 LAT·FRONTAL" };
+  const labels = { auto:"🔄 AUTO", frontal:"🖥 FRONTAL", lateral:"📐 LATERAL", "lateral-frontal":"📐 LAT·FRONTAL" };
   b.textContent = labels[modoActivo] || modoActivo.toUpperCase();
 }
 
@@ -327,33 +371,65 @@ function agregarLog(msg) {
   el.textContent = `[${ts}] ${msg}\n` + el.textContent.slice(0, 4000);
 }
 
+function mostrarToast(msg) {
+  let t = document.getElementById("toast-global");
+  if (!t) {
+    t = document.createElement("div"); t.id = "toast-global";
+    t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111318;border:1px solid #252a35;color:#d4d8e4;padding:10px 20px;border-radius:8px;font-size:13px;font-family:'JetBrains Mono',monospace;z-index:99999;box-shadow:0 4px 20px #0009;transition:opacity .3s;pointer-events:none;";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = "1";
+  clearTimeout(t._tmr);
+  t._tmr = setTimeout(() => t.style.opacity = "0", 3000);
+}
+
+function actualizarDotTG() {
+  const dot = document.getElementById("tg-status-dot");
+  if (dot) dot.className = TG.enabled ? "tg-dot tg-dot-on" : "tg-dot tg-dot-off";
+}
+
+function mostrarNombreBot(nombre) {
+  const mBot = document.getElementById("modal-bot-name");
+  const sBot = document.getElementById("sidebar-bot-name");
+  if (mBot) mBot.textContent = nombre;
+  if (sBot) sBot.textContent = nombre;
+  
+  const linkModal = document.getElementById("btn-open-tg-modal");
+  if (linkModal) linkModal.href = `https://t.me/${nombre.replace('@','')}`;
+}
+
+// Lógica de cambio de pasos del Modal
+window.cambiarPaso = function(pasoDestino) {
+  document.querySelectorAll(".modal-step-content").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".step-dot").forEach(el => el.classList.remove("active"));
+  
+  const targetContent = document.querySelector(`.modal-step-content[data-step="${pasoDestino}"]`);
+  const targetDot = document.querySelector(`.step-dot[data-step="${pasoDestino}"]`);
+  
+  if (targetContent) targetContent.classList.add("active");
+  if (targetDot) targetDot.classList.add("active");
+};
+
 // ─────────────────────────────────────────────────────────────────────────
-// CÁMARA
+// CONTROL DE CÁMARA WEBCAM
 // ─────────────────────────────────────────────────────────────────────────
 async function iniciarDeteccion() {
   if (deteccionActiva) return;
   deteccionActiva = true;
   sesionInicio = Date.now();
   conteoPost = {}; alertasEnv = 0; ultimaAlerta = {}; tMalaInicio = null;
-
   agregarLog("▶ Iniciando detección...");
   const videoEl = document.getElementById("webcam");
-
   try {
-    pose = new Pose({
-      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`,
-    });
-    pose.setOptions({
-      modelComplexity: 1, smoothLandmarks: true,
-      enableSegmentation: false,
-      minDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
-    });
+    pose = new Pose({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, enableSegmentation: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    
     pose.onResults(async results => {
       dibujarPose(results);
       if (results.poseLandmarks) await procesarFrame(results.poseLandmarks);
       else { mostrarEstado("Sin persona", null, 0); tickMala(false); }
     });
-
+    
     camera = new Camera(videoEl, {
       onFrame: async () => { if (deteccionActiva && pose) await pose.send({ image: videoEl }); },
       width: 640, height: 480,
@@ -376,9 +452,6 @@ async function detenerDeteccion() {
   await enviarResumen();
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// DIBUJO
-// ─────────────────────────────────────────────────────────────────────────
 function dibujarPose(results) {
   const canvas = document.getElementById("output-canvas");
   if (!canvas) return;
@@ -387,29 +460,22 @@ function dibujarPose(results) {
   if (results.image) ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
   if (results.poseLandmarks) {
     const col = tipoEfectivo() === "frontal" ? "#00e676" : "#40c4ff";
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
-      { color:"#ffffff33", lineWidth:2 });
-    drawLandmarks(ctx, results.poseLandmarks,
-      { color: col, lineWidth:1, radius:4 });
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#ffffff33", lineWidth: 2 });
+    drawLandmarks(ctx, results.poseLandmarks, { color: col, lineWidth: 1, radius: 4 });
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// MODOS
-// ─────────────────────────────────────────────────────────────────────────
 function setModo(modo) {
   modoActivo = modo;
-  tipoActual = modo === "auto" ? "frontal"
-             : modo === "lateral-frontal" ? "lateral"
-             : modo;
+  tipoActual = modo === "auto" ? "frontal" : modo === "lateral-frontal" ? "lateral" : modo;
   switchCand = null; switchTS = null;
   actualizarBadge();
   agregarLog(`🔀 Modo → ${modo.toUpperCase()}`);
-  document.querySelectorAll(".btn-modo").forEach(b =>
-    b.classList.toggle("activo", b.dataset.modo === modo));
+  document.querySelectorAll(".btn-modo").forEach(b => b.classList.toggle("activo", b.dataset.modo === modo));
+  
   const descs = {
     auto: "Cambia automáticamente entre frontal y lateral según la separación de hombros (dx).",
-    frontal: "Fuerza modelo frontal. Úsalo cuando la cámara te mira de frente.",
+    frontal: "Fuerza el modelo frontal. Úsalo cuando la cámara te mira de frente.",
     lateral: "Lateral puro: cámara al costado de tu silla, en perfil.",
     "lateral-frontal": "Cámara integrada girada de lado. Usa el modelo lateral aunque MediaPipe vea ambos hombros.",
   };
@@ -418,92 +484,81 @@ function setModo(modo) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// CONFIG TELEGRAM
-// ─────────────────────────────────────────────────────────────────────────
-function leerCamposTG(sufijo = "") {
-  const t = document.getElementById(`tg-token${sufijo}`)?.value.trim()   || "";
-  const c = document.getElementById(`tg-chat-id${sufijo}`)?.value.trim() || "";
-  return { token: t, chatId: c };
-}
-
-function guardarTG(token, chatId, botName = "") {
-  localStorage.setItem("tg_bot_token", token);
-  localStorage.setItem("tg_chat_id",   chatId);
-  localStorage.setItem("tg_bot_name",  botName);
-  TG.BOT_TOKEN = token;
-  TG.CHAT_ID   = chatId;
-  TG.BOT_NAME  = botName;
-}
-
-// Detectar chat_id automáticamente con getUpdates
-async function autoDetectarChatId(token) {
-  if (!token) { alert("Ingresa primero el Token del Bot."); return; }
-  agregarLog("🔍 Buscando Chat ID en getUpdates...");
-  try {
-    const r = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
-    const d = await r.json();
-    if (!d.ok) { alert(`❌ Token inválido: ${d.description}`); return; }
-    if (!d.result || d.result.length === 0) {
-      alert("⚠ No hay mensajes recientes.\n\nEnvía cualquier mensaje a tu bot en Telegram y vuelve a intentar.");
-      return;
-    }
-    const last = d.result[d.result.length - 1];
-    const chat = last.message?.chat || last.channel_post?.chat;
-    if (!chat) { alert("No se pudo detectar el Chat ID. Envía un mensaje al bot primero."); return; }
-    const chatId = String(chat.id);
-    // Escribirlo en todos los campos visibles
-    ["tg-chat-id", "tg-chat-id-sidebar"].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = chatId;
-    });
-    agregarLog(`✅ Chat ID detectado: ${chatId}`);
-    alert(`✅ Chat ID detectado: ${chatId}\n\nYa está guardado en el campo. Haz clic en Guardar para confirmar.`);
-  } catch(e) {
-    alert(`❌ Error de red: ${e.message}\n\nNota: la detección requiere internet y un token válido.`);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// INIT
+// INICIALIZACIÓN
 // ─────────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
-  // Pre-cargar campos con valores guardados
-  ["tg-token","tg-token-sidebar"].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = TG.BOT_TOKEN;
-  });
-  ["tg-chat-id","tg-chat-id-sidebar"].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = TG.CHAT_ID;
-  });
-  mostrarNombreBot(TG.BOT_NAME);
+  // Mostrar valores iniciales desencriptados
+  mostrarNombreBot(BOT_USERNAME);
+  
+  if (TG.enabled) {
+    const mOverlay = document.getElementById("modal-consent");
+    if (mOverlay) mOverlay.classList.remove("active");
+    const elSide = document.getElementById("tg-chat-id-sidebar");
+    if (elSide) elSide.value = TG.CHAT_ID;
+    actualizarDotTG();
+  }
 
-  // Botones de modo
-  document.querySelectorAll(".btn-modo").forEach(btn =>
-    btn.addEventListener("click", () => setModo(btn.dataset.modo))
-  );
+  document.querySelectorAll(".btn-modo").forEach(btn => btn.addEventListener("click", () => setModo(btn.dataset.modo)));
   document.getElementById("btn-iniciar")?.addEventListener("click", iniciarDeteccion);
   document.getElementById("btn-detener")?.addEventListener("click", detenerDeteccion);
 
-  // Cargar modelos
+  // Modal Step 2 Actions
+  document.getElementById("btn-autodetect-modal")?.addEventListener("click", async (e) => {
+    await autoDetectarChatId(e.target);
+  });
+
+  document.getElementById("btn-finalizar-onboarding")?.addEventListener("click", () => {
+    const idVal = document.getElementById("tg-chat-id-modal")?.value.trim();
+    if (!idVal) {
+      mostrarToast("⚠️ Debes detectar tu Chat ID de Telegram antes de continuar.");
+      return;
+    }
+    guardarChatId(idVal);
+    actualizarDotTG();
+    const overlay = document.getElementById("modal-consent");
+    if (overlay) overlay.classList.remove("active");
+    mostrarToast("🎉 ¡Configuración completada con éxito!");
+  });
+
+  // Sidebar Actions
+  document.getElementById("btn-guardar-tg-sidebar")?.addEventListener("click", () => {
+    const c = document.getElementById("tg-chat-id-sidebar")?.value.trim();
+    if (!c) { mostrarToast("Ingresa tu Chat ID."); return; }
+    guardarChatId(c);
+    actualizarDotTG();
+    mostrarToast("✅ Chat ID guardado");
+  });
+
+  document.getElementById("btn-autodetect-sb")?.addEventListener("click", async (e) => {
+    const chatId = await autoDetectarChatId(e.target);
+    if (chatId) {
+      guardarChatId(chatId);
+      actualizarDotTG();
+    }
+  });
+
+  document.getElementById("btn-probar-tg-sidebar")?.addEventListener("click", async () => {
+    const c = document.getElementById("tg-chat-id-sidebar")?.value.trim();
+    if (!c) { mostrarToast("Ingresa tu Chat ID primero."); return; }
+    guardarChatId(c);
+    const ok = await tgSend("🤖 <b>Monitor de Posturas Web</b> — ¡Conexión de prueba exitosa! ✅");
+    mostrarToast(ok ? "✅ Mensaje enviado a Telegram" : "❌ Error. Verifica tu Chat ID o inicia el Bot.");
+  });
+
   await cargarModelos();
   actualizarBadge();
-  agregarLog("✅ Sistema listo. Configura Telegram y presiona Iniciar.");
+  agregarLog("✅ Sistema listo. Presiona Iniciar.");
 
   // Stats ticker
   setInterval(() => {
     if (!sesionInicio) return;
-    const s = Math.floor((Date.now()-sesionInicio)/1000);
-    const total = Object.values(conteoPost).reduce((a,b)=>a+b,0)||1;
+    const s = Math.floor((Date.now() - sesionInicio) / 1000);
+    const total = Object.values(conteoPost).reduce((a,b)=>a+b,0) || 1;
     const pctOk = (((conteoPost[POSTURA_OK]||0)/total)*100).toFixed(0);
-    const set = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
-    set("stat-tiempo", `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`);
-    set("stat-frames", total);
+    const set = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
+    set("stat-tiempo",  `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`);
+    set("stat-frames",  total);
     set("stat-alertas", alertasEnv);
-    set("stat-buena", deteccionActiva ? `${pctOk}%` : "—");
+    set("stat-buena",   deteccionActiva ? `${pctOk}%` : "—");
   }, 1000);
 });
-
-function mostrarNombreBot(nombre) {
-  const el = document.getElementById("bot-name-display");
-  if (!el) return;
-  el.textContent = nombre ? `@${nombre}` : "—";
-}
