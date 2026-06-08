@@ -13,188 +13,486 @@
 </head>
 <body>
 
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL MULTI-PASO
+     paso 0 = Bienvenida
+     paso 1 = Términos
+     paso 2 = Telegram (solo Chat ID — token interno)
+     ══════════════════════════════════════════════════════════════ -->
 <div id="modal-consent" class="modal-overlay active">
   <div class="modal-box">
 
-    <div class="modal-steps">
-      <span class="step-dot active" data-step="0"></span>
-      <span class="step-dot" data-step="1"></span>
-      <span class="step-dot" data-step="2"></span>
+    <!-- indicador de pasos -->
+    <div class="steps-indicator">
+      <div class="step-dot active" id="dot-0"></div>
+      <div class="step-line"></div>
+      <div class="step-dot" id="dot-1"></div>
+      <div class="step-line"></div>
+      <div class="step-dot" id="dot-2"></div>
     </div>
 
-    <div class="modal-step-content active" data-step="0">
-      <h2>MONITOR DE POSTURA v3.2</h2>
-      <p class="modal-subtitle">Corrección inteligente mediante Inteligencia Artificial y visión artificial.</p>
-      <div class="modal-hero-benefits">
-        <div class="m-benefit">🟢 <span>Previene dolores lumbares y cervicales</span></div>
-        <div class="m-benefit">📐 <span>Modelos ONNX optimizados (Frontal / Lateral)</span></div>
-        <div class="m-benefit">📬 <span>Alertas automáticas directo a tu Telegram</span></div>
+    <!-- ══ PASO 0: BIENVENIDA ══════════════════════════════════ -->
+    <div class="modal-step" id="step-welcome">
+      <div class="welcome-hero">
+        <div class="welcome-icon-wrap">
+          <span class="welcome-icon">🧠</span>
+          <div class="welcome-glow"></div>
+        </div>
+        <h1 class="welcome-title">Monitor de Posturas Web</h1>
+        <p class="welcome-tagline">Análisis postural en tiempo real mediante Inteligencia Artificial</p>
       </div>
-      <button class="btn-modal-next" onclick="cambiarPaso(1)">Comenzar Configuración ➔</button>
+
+      <div class="welcome-features">
+        <div class="feat-card">
+          <span class="feat-icon">📷</span>
+          <div>
+            <strong>Detección en tiempo real</strong>
+            <p>Usa tu cámara web para analizar tu postura mientras trabajas o estudias. Todo el procesamiento ocurre localmente en tu dispositivo.</p>
+          </div>
+        </div>
+        <div class="feat-card">
+          <span class="feat-icon">🤖</span>
+          <div>
+            <strong>IA con modelos entrenados</strong>
+            <p>Clasifica 5 posiciones distintas (erguido, inclinado al frente, atrás, izquierda y derecha) usando Random Forest con ~98% de precisión.</p>
+          </div>
+        </div>
+        <div class="feat-card">
+          <span class="feat-icon">📱</span>
+          <div>
+            <strong>Alertas por Telegram</strong>
+            <p>Conecta tu Telegram para recibir notificaciones cuando mantengas una mala postura más de 20 segundos y un resumen de cada sesión.</p>
+          </div>
+        </div>
+        <div class="feat-card">
+          <span class="feat-icon">🔒</span>
+          <div>
+            <strong>Privacidad total</strong>
+            <p>No se graba video. No se envían imágenes a ningún servidor. Solo se procesan coordenadas numéricas de tus articulaciones.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="welcome-purpose">
+        <span class="purpose-label">¿Para qué sirve?</span>
+        <p>Esta herramienta está diseñada para ayudarte a <strong>mantener una postura saludable</strong> durante largas jornadas frente al computador, reduciendo el riesgo de dolores de cuello, espalda y hombros asociados al trabajo sedentario.</p>
+      </div>
+
+      <button class="btn-primary btn-full" id="btn-welcome-next">Comenzar →</button>
     </div>
 
-    <div class="modal-step-content" data-step="1">
-      <h3>Privacidad y Cámara</h3>
-      <p>Este sistema procesa el video de tu cámara web localmente en tu navegador usando modelos matemáticos de <strong>MediaPipe</strong> y <strong>ONNX Runtime</strong>.</p>
-      <div class="privacy-box">
-        <p>🔒 <strong>100% Privado:</strong> Ninguna imagen, frame o video es almacenado o enviado a servidores externos. Todo el análisis ocurre en tu computadora.</p>
+    <!-- ══ PASO 1: TÉRMINOS ════════════════════════════════════ -->
+    <div class="modal-step hidden" id="step-consent">
+      <div class="modal-header-sm">
+        <span>📋</span>
+        <h2>Términos de uso</h2>
       </div>
-      <div class="modal-actions-row">
-        <button class="btn-modal-back" onclick="cambiarPaso(0)">Atrás</button>
-        <button class="btn-modal-next" onclick="cambiarPaso(2)">Aceptar y Continuar</button>
+
+      <div class="terms-box">
+        <p><strong>1. Acceso a cámara:</strong> La aplicación solicita permiso para acceder a tu cámara web. Las imágenes se procesan <em>únicamente en tu navegador</em> y nunca se transmiten a servidores externos.</p>
+        <p><strong>2. Privacidad de datos:</strong> No se almacenan imágenes, videos ni grabaciones. El análisis trabaja exclusivamente con coordenadas numéricas (x, y, z) de 33 puntos de tu cuerpo detectados por MediaPipe.</p>
+        <p><strong>3. Notificaciones Telegram:</strong> Si decides conectar Telegram, los mensajes se envían directamente desde tu navegador a la API oficial de Telegram. Solo tu Chat ID se guarda en tu dispositivo (localStorage). El bot ya está configurado.</p>
+        <p><strong>4. Uso responsable:</strong> Esta herramienta es un asistente de bienestar postural. No constituye diagnóstico médico ni reemplaza la evaluación de un profesional de salud.</p>
+        <p><strong>5. Código abierto:</strong> Esta aplicación es de uso educativo y personal. El modelo de IA fue entrenado con datos propios y no contiene información de terceros.</p>
+      </div>
+
+      <label class="check-label">
+        <input type="checkbox" id="check-consent"/>
+        <span>He leído y acepto los términos de uso</span>
+      </label>
+
+      <div class="modal-nav-btns">
+        <button class="btn-ghost" id="btn-consent-back">← Volver</button>
+        <button class="btn-primary" id="btn-consent-next">Aceptar y continuar →</button>
       </div>
     </div>
 
-    <div class="modal-step-content" data-step="2">
-      <h3>Vinculación con Telegram</h3>
-      <p>Recibe notificaciones en tiempo real cuando mantengas una mala postura.</p>
-      
-      <div class="tg-setup-instructions">
-        <div class="tg-substep">
-          <div class="tg-substep-num">1</div>
-          <div class="tg-substep-body">
-            <strong>Busca e inicia el Bot</strong>
-            <p>Abre Telegram, busca al bot <span id="modal-bot-name" class="bot-highlight">@cargando_bot...</span> e inicia una conversación presionando <b>/start</b>.</p>
-            <a href="#" id="btn-open-tg-modal" target="_blank" class="btn-tg-open">Abrir Telegram</a>
+    <!-- ══ PASO 2: TELEGRAM — solo Chat ID ════════════════════ -->
+    <div class="modal-step hidden" id="step-telegram">
+      <div class="modal-header-sm">
+        <span>📱</span>
+        <h2>Conectar Telegram <span class="badge-optional">Opcional</span></h2>
+      </div>
+
+      <p class="tg-info">Recibe alertas de postura y resúmenes de sesión directamente en Telegram. El bot ya está listo — solo necesitas tu Chat ID.</p>
+
+      <div class="tg-flow">
+
+        <!-- Bloque: ya configurado -->
+        <div id="tg-saved-block" class="tg-saved-block hidden">
+          <div class="tg-saved-inner">
+            <span class="tg-saved-icon">✅</span>
+            <div>
+              <div class="tg-saved-title">Telegram configurado</div>
+              <div class="tg-saved-name">Chat ID guardado</div>
+            </div>
+            <button class="btn-link" id="btn-tg-reconfig">Cambiar</button>
           </div>
         </div>
 
-        <div class="tg-substep">
-          <div class="tg-substep-num">2</div>
-          <div class="tg-substep-body">
-            <strong>Detección Automática de tu Chat ID</strong>
-            <p>Envía cualquier mensaje de texto al bot, luego presiona el botón de abajo para capturar tu ID de manera segura.</p>
-            
-            <div class="input-container-tg">
-              <input type="text" id="tg-chat-id-modal" placeholder="Tu Chat ID aparecerá aquí..." readonly />
-              <button id="btn-autodetect-modal" class="btn-input-action">🔍 Detectar</button>
+        <!-- Bloque: configurar (solo 2 pasos, sin token) -->
+        <div id="tg-manual-block">
+
+          <!-- Paso 1: buscar el bot -->
+          <div class="tg-substep">
+            <div class="tg-substep-num">1</div>
+            <div class="tg-substep-body">
+              <strong>Abre Telegram y busca el bot</strong>
+              <p>El bot se llama
+                <span class="bot-highlight" id="bot-search-name">@mi_postura_bot</span>
+                <button class="btn-copy-inline" id="btn-copy-botname-modal" title="Copiar nombre">📋</button>
+              </p>
+              <p class="tg-sub-note">Búscalo en Telegram, ábrelo y envíale <code>/start</code> o cualquier mensaje.</p>
+              <a class="btn-tg-open" href="https://t.me/mi_postura_bot" target="_blank" id="btn-open-bot">
+                <span>Abrir bot en Telegram</span> ↗
+              </a>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="modal-actions-row">
-        <button class="btn-modal-back" onclick="cambiarPaso(1)">Atrás</button>
-        <button class="btn-modal-next final" id="btn-finalizar-onboarding">Finalizar y Configurar</button>
+          <!-- Paso 2: detectar Chat ID -->
+          <div class="tg-substep">
+            <div class="tg-substep-num">2</div>
+            <div class="tg-substep-body">
+              <strong>Detecta tu Chat ID automáticamente</strong>
+              <p class="tg-sub-note">Una vez enviado el mensaje al bot, haz clic en "Detectar" y lo obtendremos solos.</p>
+              <div class="input-detect-row">
+                <input type="text" id="tg-chat-id-modal" class="tg-input" placeholder="O escríbelo manualmente..."/>
+                <button class="btn-icon-sm" id="btn-autodetect-modal">🔍 Detectar</button>
+              </div>
+              <div id="chatid-ok-row" class="bot-name-row hidden">
+                <span class="bot-check">✅</span>
+                <span id="chatid-ok-val" class="bot-name-val">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Probar conexión -->
+          <button class="btn-secondary btn-full" id="btn-probar-tg">🔔 Probar conexión</button>
+        </div>
+
+      </div><!-- /tg-flow -->
+
+      <div class="modal-nav-btns">
+        <button class="btn-ghost" id="btn-tg-back">← Volver</button>
+        <button class="btn-ghost" id="btn-tg-skip">Saltar →</button>
+        <button class="btn-primary" id="btn-tg-next">Comenzar →</button>
       </div>
     </div>
 
-  </div>
-</div>
+  </div><!-- /modal-box -->
+</div><!-- /modal-overlay -->
 
-<div class="app-container">
-  
+<!-- ═══════════════════════════ APP PRINCIPAL ════════════════════════════ -->
+<div id="app" class="app hidden">
   <aside class="sidebar">
-    <div class="sidebar-header">
-      <h1>POSTURE<span style="color:var(--accent)">.AI</span></h1>
-      <span class="version-tag">v3.2</span>
+    <div class="sidebar-logo">
+      <span class="logo-icon">🧠</span>
+      <span class="logo-text">Monitor Posturas</span>
     </div>
 
-    <div class="sidebar-section">
-      <h3>📡 CONEXIÓN TELEGRAM</h3>
-      <div class="tg-status-wrapper">
-        <span>Estado del Bot:</span>
-        <div class="status-dot-container">
-          <div id="tg-status-dot" class="tg-dot tg-dot-off"></div>
-          <span id="sidebar-bot-name" class="bot-highlight-sidebar">@...</span>
+    <div class="card-estado">
+      <div class="card-label">Estado actual</div>
+      <div id="postura-label" class="postura-label">Esperando...</div>
+      <div class="meta-row">
+        <span id="confianza-label" class="meta-chip">—</span>
+        <span id="dx-label" class="meta-chip">dx: —</span>
+      </div>
+    </div>
+
+    <div class="card-barra">
+      <div class="barra-header">
+        <span>Tiempo mala postura</span>
+        <span id="tiempo-mala-label" class="tiempo-label">0s / 20s</span>
+      </div>
+      <div class="barra-bg"><div id="barra-mala" class="barra-fill" style="width:0%"></div></div>
+    </div>
+
+    <div class="card-modo">
+      <div class="card-label">Modo de detección</div>
+      <div id="badge-modo" class="badge-modo">🔄 AUTO</div>
+      <div class="btns-modo">
+        <button class="btn-modo activo" data-modo="auto">🔄 AUTO</button>
+        <button class="btn-modo" data-modo="frontal">🖥 FRONTAL</button>
+        <button class="btn-modo" data-modo="lateral">📐 LATERAL</button>
+        <button class="btn-modo" data-modo="lateral-frontal">📐 LAT·FRONTAL</button>
+      </div>
+      <p class="modo-desc" id="modo-desc-text">Auto: cambia entre frontal y lateral según la separación de hombros.</p>
+    </div>
+
+    <div class="card-controles">
+      <button class="btn-iniciar" id="btn-iniciar">▶ Iniciar</button>
+      <button class="btn-detener" id="btn-detener">⏹ Detener</button>
+    </div>
+
+    <!-- Sidebar Telegram: solo Chat ID, sin token -->
+    <details class="card-tg" id="tg-details">
+      <summary>📱 Telegram <span id="tg-status-dot" class="tg-dot tg-dot-off"></span></summary>
+      <div class="tg-config">
+        <div class="tg-bot-info">
+          <span class="tg-bot-label">Bot:</span>
+          <span class="tg-bot-name" id="bot-name-display">@mi_postura_bot</span>
+          <button class="btn-copy-xs" id="btn-copy-botname-sb" title="Copiar nombre del bot">📋</button>
+        </div>
+        <label>Tu Chat ID</label>
+        <div class="input-btn-row">
+          <input type="text" id="tg-chat-id-sidebar" class="tg-input-sm" placeholder="123456789"/>
+          <button class="btn-icon-xs" id="btn-autodetect-sb" title="Auto-detectar Chat ID">🔍</button>
+        </div>
+        <p class="tg-note-sm">Envía un mensaje al bot y usa 🔍 para detectar tu Chat ID automáticamente.</p>
+        <div class="tg-btns-sm">
+          <button class="btn-sm" id="btn-guardar-tg-sidebar">💾 Guardar</button>
+          <button class="btn-sm" id="btn-probar-tg-sidebar">🔔 Probar</button>
         </div>
       </div>
-      
-      <div class="form-group">
-        <label>Tu Chat ID:</label>
-        <div class="input-with-btn">
-          <input type="text" id="tg-chat-id-sidebar" placeholder="Ej: 12345678" />
-          <button id="btn-autodetect-sb" class="btn-sidebar-inline-action" title="Detectar automáticamente">🔍</button>
-        </div>
-      </div>
+    </details>
 
-      <div class="sidebar-actions-grid">
-        <button id="btn-guardar-tg-sidebar" class="btn-sidebar-primary">💾 Guardar ID</button>
-        <button id="btn-probar-tg-sidebar" class="btn-sidebar-secondary">⚡ Probar</button>
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <h3>🎛 MODOS DE DETECCIÓN</h3>
-      <div class="modos-grid">
-        <button class="btn-modo activo" data-modo="auto">Auto</button>
-        <button class="btn-modo" data-modo="frontal">Frontal</button>
-        <button class="btn-modo" data-modo="lateral">Lateral</button>
-        <button class="btn-modo" data-modo="lateral-frontal">Lat-Front</button>
-      </div>
-      <div class="modo-description">
-        <p id="modo-desc-text">Cambia automáticamente entre frontal y lateral según la separación de hombros (dx).</p>
-      </div>
-    </div>
-
-    <div class="sidebar-section log-section">
-      <h3>📋 LOG DEL SISTEMA</h3>
-      <div id="log-box" class="log-box"></div>
+    <div class="card-log">
+      <div class="card-label">Registro</div>
+      <pre id="log-box" class="log-box">Sistema iniciando...</pre>
     </div>
   </aside>
 
-  <main class="main-content">
-    
-    <header class="dashboard-header">
-      <div class="stat-card animate-pulse">
-        <span class="stat-label">POSTURA ACTUAL</span>
-        <span id="postura-label" class="stat-value text-dim">—</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">CONFIANZA IA</span>
-        <span id="confianza-label" class="stat-value">—</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">INDICADOR DX</span>
-        <span id="dx-label" class="stat-value">—</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">MODELO ACTIVO</span>
-        <span id="badge-modo" class="badge-type">🔄 AUTO</span>
-      </div>
-    </header>
-
-    <div class="workspace">
-      <div class="video-container">
-        <video id="webcam" autoplay playsinline muted></video>
-        <canvas id="output-canvas" width="640" height="480"></canvas>
-        
-        <div id="visual-alert" class="visual-alert-overlay hidden">
-          <div class="alert-content">
-            <span class="alert-icon">⚠️</span>
-            <span class="alert-title">¡MALA POSTURA DETECTADA!</span>
-          </div>
-        </div>
+  <main class="main-panel">
+    <div class="video-wrapper">
+      <video id="webcam" class="webcam" autoplay muted playsinline></video>
+      <canvas id="output-canvas" class="output-canvas" width="640" height="480"></canvas>
+      <div class="video-overlay-modo">
+        <span id="modo-activo-label" class="overlay-modo-label">—</span>
       </div>
     </div>
-
-    <footer class="dashboard-footer">
-      <div class="progress-container">
-        <div class="progress-text">
-          <span>Tiempo de Tolerancia en Mala Postura:</span>
-          <span id="tiempo-mala-label" class="timer-counter">0s / 20s</span>
-        </div>
-        <div class="progress-bar-bg">
-          <div id="barra-mala" class="progress-bar-fill" style="width: 0%"></div>
-        </div>
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-val" id="stat-tiempo">0:00</span>
+        <span class="stat-key">Sesión</span>
       </div>
-
-      <div class="session-controls-panel">
-        <div class="session-stats">
-          <div class="s-stat">⏱ <span id="stat-tiempo">0:00</span></div>
-          <div class="s-stat">📸 <span id="stat-frames">0</span> frames</div>
-          <div class="s-stat">🚨 <span id="stat-alertas">0</span> alertas</div>
-          <div class="s-stat">📈 Correcta: <span id="stat-buena">—</span></div>
-        </div>
-        <div class="action-buttons">
-          <button id="btn-iniciar" class="btn-start">▶ Iniciar Monitoreo</button>
-          <button id="btn-detener" class="btn-stop">⏹ Detener</button>
-        </div>
+      <div class="stat-item">
+        <span class="stat-val" id="stat-frames">0</span>
+        <span class="stat-key">Frames</span>
       </div>
-    </footer>
-
+      <div class="stat-item">
+        <span class="stat-val" id="stat-alertas">0</span>
+        <span class="stat-key">Alertas TG</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-val" id="stat-buena">—</span>
+        <span class="stat-key">% Correcta</span>
+      </div>
+    </div>
   </main>
-</div>
+</div><!-- /app -->
 
+<script src="script.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// LÓGICA DEL MODAL MULTI-PASO + TELEGRAM UI
+// Sin campo de token — el bot ya está configurado internamente
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener("DOMContentLoaded", () => {
+
+  // ── Referencias de pasos ─────────────────────────────────────
+  const PASOS = ["step-welcome","step-consent","step-telegram"];
+  const DOTS  = ["dot-0","dot-1","dot-2"];
+  let pasoActual = 0;
+
+  function irAPaso(n) {
+    PASOS.forEach((id,i) => {
+      document.getElementById(id).classList.toggle("hidden", i !== n);
+    });
+    DOTS.forEach((id,i) => {
+      document.getElementById(id).classList.toggle("active", i <= n);
+    });
+    pasoActual = n;
+  }
+
+  // ── Toast ────────────────────────────────────────────────────
+  function mostrarToast(msg) {
+    let t = document.getElementById("toast");
+    if (!t) {
+      t = document.createElement("div"); t.id = "toast";
+      t.style.cssText =
+        "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);" +
+        "background:#111318;border:1px solid #252a35;color:#d4d8e4;" +
+        "padding:10px 20px;border-radius:8px;font-size:13px;" +
+        "font-family:'JetBrains Mono',monospace;z-index:99999;" +
+        "box-shadow:0 4px 20px #0009;transition:opacity .3s;pointer-events:none;";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.opacity = "1";
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.style.opacity = "0", 2800);
+  }
+
+  // ── PASO 0 → 1 ──────────────────────────────────────────────
+  document.getElementById("btn-welcome-next").addEventListener("click", () => irAPaso(1));
+
+  // ── PASO 1 ──────────────────────────────────────────────────
+  document.getElementById("btn-consent-back").addEventListener("click", () => irAPaso(0));
+  document.getElementById("btn-consent-next").addEventListener("click", () => {
+    if (!document.getElementById("check-consent").checked) {
+      alert("Debes aceptar los términos para continuar."); return;
+    }
+    irAPaso(2);
+    inicializarPasoTelegram();
+  });
+
+  // ── PASO 2 ──────────────────────────────────────────────────
+  document.getElementById("btn-tg-back").addEventListener("click", () => irAPaso(1));
+  document.getElementById("btn-tg-skip").addEventListener("click", cerrarModal);
+  document.getElementById("btn-tg-next").addEventListener("click", () => {
+    const c = document.getElementById("tg-chat-id-modal")?.value.trim() || "";
+    if (c) guardarChatId(c);
+    cerrarModal();
+  });
+
+  // ── Inicializar paso Telegram ────────────────────────────────
+  function inicializarPasoTelegram() {
+    // Actualizar nombre/link del bot usando el BOT_USERNAME del script.js
+    const nameEl = document.getElementById("bot-search-name");
+    if (nameEl) nameEl.textContent = BOT_USERNAME;
+    const linkEl = document.getElementById("btn-open-bot");
+    if (linkEl) linkEl.href = `https://t.me/${BOT_USERNAME.replace("@","")}`;
+
+    // Si ya hay chat ID guardado, mostrar bloque guardado
+    if (TG.CHAT_ID) {
+      document.getElementById("tg-saved-block").classList.remove("hidden");
+      document.getElementById("tg-manual-block").classList.add("hidden");
+      document.getElementById("tg-chat-id-modal").value = TG.CHAT_ID;
+    } else {
+      document.getElementById("tg-saved-block").classList.add("hidden");
+      document.getElementById("tg-manual-block").classList.remove("hidden");
+    }
+  }
+
+  // ── Botón "Cambiar" en bloque guardado ──────────────────────
+  document.getElementById("btn-tg-reconfig")?.addEventListener("click", () => {
+    document.getElementById("tg-saved-block").classList.add("hidden");
+    document.getElementById("tg-manual-block").classList.remove("hidden");
+  });
+
+  // ── Copiar nombre del bot (modal) ────────────────────────────
+  document.getElementById("btn-copy-botname-modal")?.addEventListener("click", () => {
+    const n = document.getElementById("bot-search-name")?.textContent || BOT_USERNAME;
+    navigator.clipboard.writeText(n)
+      .then(() => mostrarToast(`Copiado: ${n}`))
+      .catch(() => alert(`Copia manualmente: ${n}`));
+  });
+
+  // ── Auto-detectar Chat ID (modal) ───────────────────────────
+  document.getElementById("btn-autodetect-modal")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const orig = btn.textContent;
+    btn.textContent = "⏳ Buscando..."; btn.disabled = true;
+    try {
+      const chatId = await autoDetectarChatId();
+      if (chatId) {
+        document.getElementById("tg-chat-id-modal").value = chatId;
+        document.getElementById("chatid-ok-row").classList.remove("hidden");
+        document.getElementById("chatid-ok-val").textContent = chatId;
+        mostrarToast(`✅ Chat ID: ${chatId}`);
+      }
+    } finally {
+      btn.textContent = orig; btn.disabled = false;
+    }
+  });
+
+  // ── Probar conexión (modal) ──────────────────────────────────
+  document.getElementById("btn-probar-tg")?.addEventListener("click", async () => {
+    const c = document.getElementById("tg-chat-id-modal")?.value.trim();
+    if (!c) { mostrarToast("Detecta o ingresa tu Chat ID primero."); return; }
+    guardarChatId(c);
+    const btn = document.getElementById("btn-probar-tg");
+    btn.textContent = "⏳ Enviando..."; btn.disabled = true;
+    const ok = await tgSend("🤖 <b>Monitor de Posturas Web</b>\n\n✅ Conexión exitosa. Las notificaciones de postura están activas.");
+    btn.textContent = "🔔 Probar conexión"; btn.disabled = false;
+    mostrarToast(ok ? "✅ Mensaje enviado a Telegram" : "❌ No se pudo enviar. Verifica el Chat ID.");
+  });
+
+  // ── Cerrar modal ─────────────────────────────────────────────
+  function cerrarModal() {
+    document.getElementById("modal-consent").classList.remove("active");
+    document.getElementById("app").classList.remove("hidden");
+    sincronizarSidebar();
+    actualizarDotTG();
+  }
+
+  function sincronizarSidebar() {
+    const c = document.getElementById("tg-chat-id-sidebar");
+    if (c) c.value = TG.CHAT_ID;
+    // Mostrar nombre del bot en sidebar
+    const nameEl = document.getElementById("bot-name-display");
+    if (nameEl) nameEl.textContent = BOT_USERNAME;
+  }
+
+  function actualizarDotTG() {
+    const dot = document.getElementById("tg-status-dot");
+    if (dot) dot.className = TG.enabled ? "tg-dot tg-dot-on" : "tg-dot tg-dot-off";
+  }
+
+  // ── Sidebar: copiar nombre del bot ──────────────────────────
+  document.getElementById("btn-copy-botname-sb")?.addEventListener("click", () => {
+    navigator.clipboard.writeText(BOT_USERNAME)
+      .then(() => mostrarToast(`Copiado: ${BOT_USERNAME}`));
+  });
+
+  // ── Sidebar: auto-detectar Chat ID ──────────────────────────
+  document.getElementById("btn-autodetect-sb")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const orig = btn.textContent;
+    btn.textContent = "⏳"; btn.disabled = true;
+    try {
+      const chatId = await autoDetectarChatId();
+      if (chatId) {
+        document.getElementById("tg-chat-id-sidebar").value = chatId;
+        actualizarDotTG();
+      }
+    } finally {
+      btn.textContent = orig; btn.disabled = false;
+    }
+  });
+
+  // ── Sidebar: guardar ─────────────────────────────────────────
+  document.getElementById("btn-guardar-tg-sidebar")?.addEventListener("click", () => {
+    const c = document.getElementById("tg-chat-id-sidebar")?.value.trim();
+    if (!c) { mostrarToast("Ingresa tu Chat ID."); return; }
+    guardarChatId(c);
+    actualizarDotTG();
+    mostrarToast("✅ Chat ID guardado");
+  });
+
+  // ── Sidebar: probar ──────────────────────────────────────────
+  document.getElementById("btn-probar-tg-sidebar")?.addEventListener("click", async () => {
+    const c = document.getElementById("tg-chat-id-sidebar")?.value.trim();
+    if (!c) { mostrarToast("Ingresa tu Chat ID primero."); return; }
+    guardarChatId(c);
+    const ok = await tgSend("🤖 <b>Monitor de Posturas Web</b> — conexión de prueba exitosa ✅");
+    mostrarToast(ok ? "✅ Mensaje enviado a Telegram" : "❌ Error. Verifica el Chat ID.");
+  });
+
+  // ── Botones de modo ──────────────────────────────────────────
+  document.querySelectorAll(".btn-modo").forEach(btn =>
+    btn.addEventListener("click", () => setModo(btn.dataset.modo))
+  );
+  document.getElementById("btn-iniciar")?.addEventListener("click", iniciarDeteccion);
+  document.getElementById("btn-detener")?.addEventListener("click", detenerDeteccion);
+
+  // ── Stats ticker ─────────────────────────────────────────────
+  setInterval(() => {
+    if (!sesionInicio) return;
+    const s = Math.floor((Date.now()-sesionInicio)/1000);
+    const total = Object.values(conteoPost).reduce((a,b)=>a+b,0)||1;
+    const pctOk = (((conteoPost[POSTURA_OK]||0)/total)*100).toFixed(0);
+    const set = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    set("stat-tiempo", `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`);
+    set("stat-frames", total);
+    set("stat-alertas", alertasEnv);
+    set("stat-buena", deteccionActiva ? `${pctOk}%` : "—");
+  }, 1000);
+
+  // ── Iniciar ──────────────────────────────────────────────────
+  sincronizarSidebar();
+  actualizarDotTG();
+  irAPaso(0);
+});
+</script>
 </body>
 </html>
