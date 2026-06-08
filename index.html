@@ -1,85 +1,92 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Monitor de Postura ML</title>
 
   <!-- ONNX Runtime -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-
   <!-- MediaPipe Pose -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
-
-  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-<!-- ═══════════════════════════ MODAL CONSENTIMIENTO ════════════════════════ -->
+<!-- ══════════════════════ MODAL CONSENTIMIENTO ══════════════════════════ -->
 <div id="modal-consent" class="modal-overlay active">
   <div class="modal-box">
     <div class="modal-header">
       <span class="modal-icon">🧠</span>
       <h2>Monitor de Postura ML</h2>
-      <p class="modal-subtitle">Sistema de análisis postural con IA — ESPE 2025</p>
+      <p class="modal-subtitle">Sistema de análisis postural con IA · ESPE 2025</p>
     </div>
 
-    <!-- Paso 1: Consentimiento -->
+    <!-- PASO 1: Consentimiento -->
     <div class="modal-step" id="step-consent">
       <h3>Términos de uso</h3>
       <div class="terms-box">
-        <p><strong>1. Cámara:</strong> Se requiere acceso a tu cámara web. Las imágenes se procesan <em>localmente</em> en tu dispositivo — no se envían a ningún servidor.</p>
-        <p><strong>2. Privacidad:</strong> No se almacenan imágenes ni videos. Solo se procesan coordenadas numéricas de tus articulaciones.</p>
-        <p><strong>3. Datos:</strong> Las sesiones se registran en Supabase con fines académicos anonimizados (proyecto de tesis ESPE).</p>
-        <p><strong>4. Notificaciones:</strong> Si configuras Telegram (opcional), recibirás alertas cuando se detecte mala postura prolongada.</p>
-        <p><strong>5. Limitación:</strong> Esta herramienta es de asistencia académica. No reemplaza consejo médico profesional.</p>
+        <p><strong>1. Cámara:</strong> Se requiere acceso a tu cámara web. Las imágenes se procesan <em>localmente</em> — no se envían a ningún servidor de video.</p>
+        <p><strong>2. Privacidad:</strong> No se almacenan imágenes ni videos. Solo se procesan coordenadas numéricas de articulaciones.</p>
+        <p><strong>3. Telegram (opcional):</strong> Si configuras las notificaciones, los mensajes se envían directamente a la API de Telegram desde tu navegador.</p>
+        <p><strong>4. Limitación:</strong> Esta herramienta es de asistencia académica y no reemplaza consejo médico profesional.</p>
       </div>
       <label class="check-label">
-        <input type="checkbox" id="check-consent" />
+        <input type="checkbox" id="check-consent"/>
         <span>He leído y acepto los términos</span>
       </label>
       <button class="btn-primary" id="btn-consent-next">Continuar →</button>
     </div>
 
-    <!-- Paso 2: Telegram (opcional) -->
+    <!-- PASO 2: Telegram -->
     <div class="modal-step hidden" id="step-telegram">
       <h3>📱 Notificaciones Telegram <span class="badge-optional">Opcional</span></h3>
-      <p class="tg-info">Recibe alertas en Telegram cuando mantengas una mala postura por más de 20 segundos y un resumen al finalizar cada sesión.</p>
+      <p class="tg-info">Recibirás alertas cuando mantengas una mala postura por más de 20 segundos y un resumen al finalizar cada sesión.</p>
 
-      <div class="tg-steps">
-        <div class="tg-step">
+      <div class="tg-steps-list">
+        <div class="tg-step-item">
           <span class="tg-num">1</span>
-          <span>Busca tu bot en Telegram y envíale <code>/start</code></span>
+          <span>Crea un bot con <strong>@BotFather</strong> en Telegram y copia el Token</span>
         </div>
-        <div class="tg-step">
+        <div class="tg-step-item">
           <span class="tg-num">2</span>
-          <span>Copia el <strong>Token del Bot</strong> desde @BotFather</span>
+          <span>Pega el token abajo y presiona <strong>"Obtener nombre"</strong></span>
         </div>
-        <div class="tg-step">
+        <div class="tg-step-item">
           <span class="tg-num">3</span>
-          <span>Obtén tu <strong>Chat ID</strong> enviando un mensaje al bot y visitando:<br>
-          <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code></span>
+          <span>Envía <code>/start</code> a tu bot, luego presiona <strong>"Auto-detectar Chat ID"</strong></span>
         </div>
       </div>
 
-      <div class="form-group">
-        <label>Token del Bot</label>
-        <input type="text" id="tg-token" placeholder="123456789:AAF..." class="tg-input" />
+      <div class="tg-token-row">
+        <div class="form-group" style="flex:1">
+          <label>Token del Bot</label>
+          <input type="text" id="tg-token" placeholder="123456789:AAF..." class="tg-input"/>
+        </div>
+        <button class="btn-icon-sm" id="btn-getme-modal" title="Verificar token y obtener nombre del bot">🤖 Verificar</button>
       </div>
-      <div class="form-group">
-        <label>Chat ID</label>
-        <input type="text" id="tg-chat-id" placeholder="987654321" class="tg-input" />
+
+      <div id="bot-name-row-modal" class="bot-name-row hidden">
+        <span class="bot-name-label">Bot:</span>
+        <span id="bot-name-modal" class="bot-name-val">—</span>
+        <button class="btn-copy-sm" id="btn-copy-botname-modal" title="Copiar nombre del bot">📋 Copiar</button>
       </div>
+
+      <div class="tg-chatid-row">
+        <div class="form-group" style="flex:1">
+          <label>Chat ID</label>
+          <input type="text" id="tg-chat-id" placeholder="987654321" class="tg-input"/>
+        </div>
+        <button class="btn-icon-sm" id="btn-autodetect-modal" title="Detectar automáticamente tu Chat ID">🔍 Auto-detectar</button>
+      </div>
+      <p class="tg-note">⚠ La auto-detección funciona en cualquier navegador, pero requiere que hayas enviado un mensaje a tu bot recientemente.</p>
 
       <div class="tg-btns">
         <button class="btn-secondary" id="btn-probar-tg">🔔 Probar conexión</button>
-        <button class="btn-secondary" id="btn-guardar-tg">💾 Guardar</button>
       </div>
 
       <div class="modal-nav">
@@ -90,10 +97,10 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════ APP PRINCIPAL ════════════════════════════ -->
+<!-- ═══════════════════════════ APP PRINCIPAL ════════════════════════════ -->
 <div id="app" class="app hidden">
 
-  <!-- Sidebar -->
+  <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <span class="logo-icon">🧠</span>
@@ -102,11 +109,11 @@
 
     <!-- Estado postura -->
     <div class="card-estado">
-      <div class="estado-header">Estado actual</div>
+      <div class="card-label">Estado actual</div>
       <div id="postura-label" class="postura-label">Esperando...</div>
       <div class="meta-row">
-        <span id="confianza-label" class="conf-label">—</span>
-        <span id="dx-label" class="dx-label">dx: —</span>
+        <span id="confianza-label" class="meta-chip">—</span>
+        <span id="dx-label" class="meta-chip">dx: —</span>
       </div>
     </div>
 
@@ -116,21 +123,18 @@
         <span>Tiempo mala postura</span>
         <span id="tiempo-mala-label" class="tiempo-label">0s / 20s</span>
       </div>
-      <div class="barra-bg">
-        <div id="barra-mala" class="barra-fill" style="width:0%"></div>
-      </div>
+      <div class="barra-bg"><div id="barra-mala" class="barra-fill" style="width:0%"></div></div>
     </div>
 
-    <!-- Modo activo -->
+    <!-- Modo -->
     <div class="card-modo">
-      <div class="modo-header">Modo de detección</div>
+      <div class="card-label">Modo de detección</div>
       <div id="badge-modo" class="badge-modo">🔄 AUTO</div>
-
       <div class="btns-modo">
-        <button class="btn-modo activo" data-modo="auto"           title="Switch automático por dx de hombros">🔄 AUTO</button>
-        <button class="btn-modo"        data-modo="frontal"         title="Cámara frontal forzada">🖥 FRONTAL</button>
-        <button class="btn-modo"        data-modo="lateral"         title="Cámara lateral pura (perfil)">📐 LATERAL</button>
-        <button class="btn-modo"        data-modo="lateral-frontal" title="Cámara integrada girada de lado — usa modelo lateral">📐 LAT-FRONTAL</button>
+        <button class="btn-modo activo" data-modo="auto">🔄 AUTO</button>
+        <button class="btn-modo" data-modo="frontal">🖥 FRONTAL</button>
+        <button class="btn-modo" data-modo="lateral">📐 LATERAL</button>
+        <button class="btn-modo" data-modo="lateral-frontal">📐 LAT·FRONTAL</button>
       </div>
       <p class="modo-desc" id="modo-desc-text">Auto: cambia entre frontal y lateral según la separación de hombros.</p>
     </div>
@@ -141,14 +145,30 @@
       <button class="btn-detener" id="btn-detener">⏹ Detener</button>
     </div>
 
-    <!-- Config Telegram (colapsable) -->
-    <details class="card-tg">
-      <summary>📱 Telegram</summary>
+    <!-- Telegram colapsable -->
+    <details class="card-tg" id="tg-details">
+      <summary>📱 Telegram <span id="tg-status-dot" class="tg-dot tg-dot-off"></span></summary>
       <div class="tg-config">
-        <label>Token Bot</label>
-        <input type="text" id="tg-token-sidebar" class="tg-input-sm" placeholder="token..." />
+
+        <label>Token del Bot</label>
+        <div class="input-btn-row">
+          <input type="text" id="tg-token-sidebar" class="tg-input-sm" placeholder="token..."/>
+          <button class="btn-icon-xs" id="btn-getme-sidebar" title="Verificar token">🤖</button>
+        </div>
+
+        <div id="bot-name-row-sb" class="bot-name-row-sm hidden">
+          <span id="bot-name-display" class="bot-name-sm">—</span>
+          <button class="btn-copy-xs" id="btn-copy-botname-sb" title="Copiar @nombre">📋</button>
+        </div>
+
         <label>Chat ID</label>
-        <input type="text" id="tg-chat-id-sidebar" class="tg-input-sm" placeholder="chat id..." />
+        <div class="input-btn-row">
+          <input type="text" id="tg-chat-id-sidebar" class="tg-input-sm" placeholder="chat id..."/>
+          <button class="btn-icon-xs" id="btn-autodetect-sb" title="Auto-detectar Chat ID">🔍</button>
+        </div>
+
+        <p class="tg-note-sm">🔍 Auto-detectar funciona en cualquier navegador. Requiere haber enviado un mensaje al bot.</p>
+
         <div class="tg-btns-sm">
           <button class="btn-sm" id="btn-guardar-tg-sidebar">💾 Guardar</button>
           <button class="btn-sm" id="btn-probar-tg-sidebar">🔔 Probar</button>
@@ -158,24 +178,20 @@
 
     <!-- Log -->
     <div class="card-log">
-      <div class="log-header">Registro</div>
+      <div class="card-label">Registro</div>
       <pre id="log-box" class="log-box">Sistema iniciando...</pre>
     </div>
   </aside>
 
-  <!-- Panel principal: vídeo -->
+  <!-- PANEL PRINCIPAL -->
   <main class="main-panel">
     <div class="video-wrapper">
       <video id="webcam" class="webcam" autoplay muted playsinline></video>
       <canvas id="output-canvas" class="output-canvas" width="640" height="480"></canvas>
-
-      <!-- Overlay de modo -->
       <div class="video-overlay-modo">
         <span id="modo-activo-label" class="overlay-modo-label">—</span>
       </div>
     </div>
-
-    <!-- Estadísticas de sesión -->
     <div class="stats-bar">
       <div class="stat-item">
         <span class="stat-val" id="stat-tiempo">0:00</span>
@@ -199,18 +215,17 @@
 
 <script src="script.js"></script>
 <script>
-// ── Lógica del modal de consentimiento ───────────────────────────────────────
+// ── Lógica del modal y Telegram UI ─────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  const modalEl   = document.getElementById("modal-consent");
-  const appEl     = document.getElementById("app");
-  const stepC     = document.getElementById("step-consent");
-  const stepTG    = document.getElementById("step-telegram");
+  const modalEl = document.getElementById("modal-consent");
+  const appEl   = document.getElementById("app");
+  const stepC   = document.getElementById("step-consent");
+  const stepTG  = document.getElementById("step-telegram");
 
-  // Paso 1 → Paso 2
+  // ── Modal paso 1 → 2
   document.getElementById("btn-consent-next").addEventListener("click", () => {
     if (!document.getElementById("check-consent").checked) {
-      alert("Debes aceptar los términos para continuar.");
-      return;
+      alert("Debes aceptar los términos para continuar."); return;
     }
     stepC.classList.add("hidden");
     stepTG.classList.remove("hidden");
@@ -219,74 +234,128 @@ document.addEventListener("DOMContentLoaded", () => {
   function cerrarModal() {
     modalEl.classList.remove("active");
     appEl.classList.remove("hidden");
+    sincronizarSidebar();
+    actualizarDotTG();
   }
 
   document.getElementById("btn-tg-next").addEventListener("click", () => {
     const t = document.getElementById("tg-token").value.trim();
     const c = document.getElementById("tg-chat-id").value.trim();
-    if (t && c) guardarConfigTelegram();
+    const n = document.getElementById("bot-name-modal")?.textContent?.replace("@","") || "";
+    if (t && c) guardarTG(t, c, n);
     cerrarModal();
   });
   document.getElementById("btn-tg-skip").addEventListener("click", cerrarModal);
 
-  // Sincronizar campos del sidebar con el modal
-  const syncSidebar = () => {
-    const t = localStorage.getItem("tg_bot_token") || "";
-    const c = localStorage.getItem("tg_chat_id")   || "";
-    const ts = document.getElementById("tg-token-sidebar");
-    const cs = document.getElementById("tg-chat-id-sidebar");
-    if (ts) ts.value = t;
-    if (cs) cs.value = c;
-  };
+  // ── Verificar token (getMe) — modal
+  document.getElementById("btn-getme-modal").addEventListener("click", async () => {
+    const t = document.getElementById("tg-token").value.trim();
+    if (!t) { alert("Ingresa el token primero."); return; }
+    const info = await tgGetMe_con(t);
+    if (!info) return;
+    mostrarBotNameModal(info.username);
+  });
 
-  document.getElementById("btn-guardar-tg-sidebar")?.addEventListener("click", () => {
+  // ── Verificar token (getMe) — sidebar
+  document.getElementById("btn-getme-sidebar").addEventListener("click", async () => {
+    const t = document.getElementById("tg-token-sidebar").value.trim();
+    if (!t) { alert("Ingresa el token primero."); return; }
+    const info = await tgGetMe_con(t);
+    if (!info) return;
+    mostrarBotNameSidebar(info.username);
+  });
+
+  async function tgGetMe_con(token) {
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const d = await r.json();
+      if (!d.ok) { alert(`❌ Token inválido: ${d.description}`); return null; }
+      return d.result;
+    } catch(e) { alert(`❌ Error de red: ${e.message}`); return null; }
+  }
+
+  function mostrarBotNameModal(username) {
+    const row = document.getElementById("bot-name-row-modal");
+    const span = document.getElementById("bot-name-modal");
+    if (row && span) { span.textContent = `@${username}`; row.classList.remove("hidden"); }
+  }
+  function mostrarBotNameSidebar(username) {
+    const row = document.getElementById("bot-name-row-sb");
+    const span = document.getElementById("bot-name-display");
+    if (row && span) { span.textContent = `@${username}`; row.classList.remove("hidden"); }
+    localStorage.setItem("tg_bot_name", username);
+    TG.BOT_NAME = username;
+  }
+
+  // ── Copiar nombre del bot — modal
+  document.getElementById("btn-copy-botname-modal")?.addEventListener("click", () => {
+    const n = document.getElementById("bot-name-modal")?.textContent || "";
+    navigator.clipboard.writeText(n).then(() => alert(`Copiado: ${n}`));
+  });
+  // ── Copiar nombre del bot — sidebar
+  document.getElementById("btn-copy-botname-sb")?.addEventListener("click", () => {
+    const n = document.getElementById("bot-name-display")?.textContent || "";
+    navigator.clipboard.writeText(n).then(() => alert(`Copiado: ${n}`));
+  });
+
+  // ── Auto-detectar Chat ID — modal
+  document.getElementById("btn-autodetect-modal").addEventListener("click", async () => {
+    const t = document.getElementById("tg-token").value.trim();
+    await autoDetectarChatId(t);
+  });
+  // ── Auto-detectar Chat ID — sidebar
+  document.getElementById("btn-autodetect-sb").addEventListener("click", async () => {
+    const t = document.getElementById("tg-token-sidebar").value.trim();
+    await autoDetectarChatId(t);
+  });
+
+  // ── Probar conexión — modal
+  document.getElementById("btn-probar-tg").addEventListener("click", async () => {
+    const t = document.getElementById("tg-token").value.trim();
+    const c = document.getElementById("tg-chat-id").value.trim();
+    if (!t || !c) { alert("Completa el token y el Chat ID."); return; }
+    guardarTG(t, c, TG.BOT_NAME);
+    const ok = await tgSend("🤖 <b>Monitor de Postura</b> — prueba de conexión exitosa ✅");
+    alert(ok ? "✅ Mensaje enviado correctamente." : "❌ Error. Verifica token y Chat ID.");
+  });
+
+  // ── Guardar sidebar
+  document.getElementById("btn-guardar-tg-sidebar").addEventListener("click", () => {
     const t = document.getElementById("tg-token-sidebar").value.trim();
     const c = document.getElementById("tg-chat-id-sidebar").value.trim();
-    if (!t || !c) { alert("Completa token y chat ID."); return; }
-    localStorage.setItem("tg_bot_token", t);
-    localStorage.setItem("tg_chat_id",   c);
-    TG.BOT_TOKEN = t; TG.CHAT_ID = c;
+    if (!t || !c) { alert("Completa token y Chat ID."); return; }
+    guardarTG(t, c, TG.BOT_NAME);
+    actualizarDotTG();
     alert("✅ Guardado.");
   });
-  document.getElementById("btn-probar-tg-sidebar")?.addEventListener("click", async () => {
+  // ── Probar sidebar
+  document.getElementById("btn-probar-tg-sidebar").addEventListener("click", async () => {
     const t = document.getElementById("tg-token-sidebar").value.trim();
     const c = document.getElementById("tg-chat-id-sidebar").value.trim();
-    if (!t || !c) { alert("Completa token y chat ID."); return; }
-    TG.BOT_TOKEN = t; TG.CHAT_ID = c;
-    await probarTelegram();
+    if (!t || !c) { alert("Completa token y Chat ID."); return; }
+    guardarTG(t, c, TG.BOT_NAME);
+    const ok = await tgSend("🤖 <b>Monitor de Postura</b> — prueba de conexión exitosa ✅");
+    alert(ok ? "✅ Mensaje enviado." : "❌ Error. Verifica token y Chat ID.");
   });
 
-  // Tooltip de modos
-  const modoDescs = {
-    "auto":           "Auto: cambia entre frontal y lateral según la separación de hombros (dx).",
-    "frontal":        "Frontal: fuerza el modelo frontal. Usa cuando la cámara te mira de frente.",
-    "lateral":        "Lateral puro: cámara colocada al costado de tu silla, perfilada.",
-    "lateral-frontal":"Lateral-frontal: cámara integrada del laptop girada de lado. Usa el modelo lateral aunque MediaPipe vea los dos hombros.",
-  };
-  document.querySelectorAll(".btn-modo").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.getElementById("modo-desc-text").textContent =
-        modoDescs[btn.dataset.modo] || "";
+  function sincronizarSidebar() {
+    ["tg-token-sidebar"].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = TG.BOT_TOKEN;
     });
-  });
+    ["tg-chat-id-sidebar"].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = TG.CHAT_ID;
+    });
+    if (TG.BOT_NAME) mostrarBotNameSidebar(TG.BOT_NAME);
+  }
 
-  // Actualizar estadísticas de sesión cada segundo
-  setInterval(() => {
-    if (!sesionInicio) return;
-    const seg   = Math.floor((Date.now() - sesionInicio) / 1000);
-    const m     = Math.floor(seg / 60);
-    const s     = seg % 60;
-    const total = Object.values(conteoPosturas).reduce((a, b) => a + b, 0) || 1;
-    const buena = ((conteoPosturas["TUP"] || 0) / total * 100).toFixed(0);
+  function actualizarDotTG() {
+    const dot = document.getElementById("tg-status-dot");
+    if (!dot) return;
+    dot.className = TG.enabled ? "tg-dot tg-dot-on" : "tg-dot tg-dot-off";
+  }
 
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set("stat-tiempo",  `${m}:${String(s).padStart(2,"0")}`);
-    set("stat-frames",  total);
-    set("stat-alertas", alertasEnviadas);
-    set("stat-buena",   `${buena}%`);
-  }, 1000);
-
-  syncSidebar();
+  sincronizarSidebar();
+  actualizarDotTG();
 });
 </script>
 </body>
