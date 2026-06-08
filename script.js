@@ -1,679 +1,566 @@
-// ═══════════════════════════════════════════════════════════════════
-// PosturaML — script.js
-// MediaPipe Pose + ONNX Runtime Web + Supabase
-// Switch automático frontal ↔ lateral
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// script.js — Monitor de Postura Web v3
+//
+// NOVEDADES v3:
+//   • Modo "lateral-frontal": cámara integrada del laptop posicionada de lado
+//     (usa modelo lateral aunque se vean ambos hombros separados en X)
+//   • Switch automático conservado sin cambios (frontal ↔ lateral)
+//   • Notificaciones Telegram:
+//       - Conectado correctamente al arrancar
+//       - Mala postura durante 20 segundos consecutivos
+//       - Resumen al detener la detección (posturas más frecuentes)
+//   • Configuración de Telegram desde el modal de consentimiento
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Supabase config (anon public key — seguro para frontend) ──────
-const SUPABASE_URL    = "https://ubhbgkplycdnscopwtoh.supabase.co";
-const SUPABASE_ANON   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViaGJna3BseWNkbnNjb3B3dG9oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDk3MDUsImV4cCI6MjA5NjQyNTcwNX0.I5yUi_iar7u57f7m_n99f81XPnBzYCi9r-eKQmQS4l0";
-
-// ── Parámetros switch ─────────────────────────────────────────────
-const UMBRAL_FRONTAL    = 0.15;   // dx > → frontal
-const UMBRAL_LATERAL    = 0.10;   // dx < → lateral
-const SWITCH_DELAY_MS   = 10000;  // 10 s de confirmación
-const CAPTURE_INTERVAL  = 30000;  // ms entre capturas Supabase
-const HISTORIAL_MAX     = 8;
-
-// ── ONNX model paths ──────────────────────────────────────────────
-const MODEL_PATHS = {
-  frontal: {
-    scaler: "models/scaler_frontal.onnx",
-    model:  "models/modelo_frontal.onnx",
-    meta:   "models/metadata_frontal.json",
-  },
-  lateral: {
-    scaler: "models/scaler_lateral.onnx",
-    model:  "models/modelo_lateral.onnx",
-    meta:   "models/metadata_lateral.json",
-  },
+// ── Configuración Telegram ───────────────────────────────────────────────────
+// Estos valores se leen del localStorage (se configuran en el modal de inicio)
+const TG = {
+  BOT_TOKEN: localStorage.getItem("tg_bot_token") || "",
+  CHAT_ID:   localStorage.getItem("tg_chat_id")   || "",
+  get enabled() { return this.BOT_TOKEN && this.CHAT_ID; },
 };
 
-// ── Clases de postura (orden fijo del RandomForest) ───────────────
-const POSTURA_CORRECTA = "TUP";
-const POSE_LABELS = {
-  TUP: "Erguido",
-  TLF: "Incl. Adelante",
-  TLB: "Incl. Atrás",
-  TLL: "Incl. Izquierda",
-  TLR: "Incl. Derecha",
+// ── Parámetros del switch automático ─────────────────────────────────────────
+const UMBRAL_FRONTAL   = 0.15;   // |dx_hombros| > UMBRAL_FRONTAL → frontal
+const UMBRAL_LATERAL   = 0.10;   // |dx_hombros| < UMBRAL_LATERAL → lateral
+const SWITCH_DELAY_MS  = 10000;  // ms continuos para confirmar switch
+
+// ── Parámetros de alertas Telegram ───────────────────────────────────────────
+const MALA_POSTURA_UMBRAL_SEG  = 20;    // segundos consecutivos → alerta TG
+const COOLDOWN_ALERTA_MS       = 120000; // 2 min entre alertas del mismo tipo
+const POSTURA_CORRECTA         = "TUP";
+
+// ── Clases/etiquetas legibles ─────────────────────────────────────────────────
+const ETIQUETAS_POSTURA = {
+  TUP: "Erguido ✅",
+  TLF: "Inclinado al frente ⚠️",
+  TLB: "Inclinado atrás ⚠️",
+  TLL: "Inclinado izquierda ⚠️",
+  TLR: "Inclinado derecha ⚠️",
 };
 
-// ══════════════════════════════════════════════════════════════════
-// Estado global
-// ══════════════════════════════════════════════════════════════════
-let state = {
-  running:       false,
-  uuid:          null,
-  modelo:        "frontal",   // modelo activo
-  candidato:     null,        // "frontal" | "lateral" | null
-  tCandidato:    null,
-  blurActivo:    false,
-  frames:        0,
-  capturas:      0,
-  tInicio:       null,
-  tUltimaCaptura: 0,
-  historial:     [],
-  datosCSV:      [],
-
-  // ONNX sessions
-  sessions: {
-    frontal: { scaler: null, model: null, meta: null },
-    lateral: { scaler: null, model: null, meta: null },
-  },
+const CONSEJOS_POSTURA = {
+  TLF: "Lleva la espalda al respaldo de la silla y levanta el monitor.",
+  TLB: "Siéntate más erguido; evita recostarte en la silla mientras trabajas.",
+  TLL: "Alinea tus hombros horizontalmente; no apoyes el codo izquierdo.",
+  TLR: "Alinea tus hombros horizontalmente; no apoyes el codo derecho.",
 };
 
-// ── Supabase client ───────────────────────────────────────────────
-let sbClient = null;
+// ── Estado global ─────────────────────────────────────────────────────────────
+let modelos = {};          // { frontal: {sess_scaler, sess_model, meta}, lateral: {...} }
+let modoActivo = "auto";   // "frontal" | "lateral" | "lateral-frontal" | "auto"
+let tipoActual = "frontal";// tipo efectivo en uso
+let switchCandidato = null;
+let switchTimestamp = null;
 
-// ── MediaPipe Pose instance ───────────────────────────────────────
-let pose = null;
-let camera = null;
+let deteccionActiva   = false;
+let camera            = null;
+let pose              = null;
+let animFrameId       = null;
 
-// ── Canvas / video refs ───────────────────────────────────────────
-const video       = document.getElementById("video");
-const canvasPose  = document.getElementById("canvas-pose");
-const ctxPose     = canvasPose.getContext("2d");
-const canvasSkel  = document.getElementById("canvas-skeleton");
-const ctxSkel     = canvasSkel.getContext("2d");
+// Estadísticas de sesión
+let sesionInicio     = null;
+let conteoPosturas   = {};   // { "TUP": 120, "TLF": 40, ... }
+let malosConsecutivos = 0;   // segundos de mala postura consecutiva
+let tMalaPosInicio   = null; // timestamp inicio racha mala
+let ultimaAlerta     = {};   // { "TLF": timestamp, ... }
+let alertasEnviadas  = 0;
 
-// ── UI refs ───────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-const btnStart    = $("btn-start");
-const btnStop     = $("btn-stop");
-const btnBlur     = $("btn-blur");
-const btnCapture  = $("btn-capture");
-const btnExport   = $("btn-export-csv");
-const selectCam   = $("select-cam");
+// ─────────────────────────────────────────────────────────────────────────────
+// CARGA DE MODELOS
+// ─────────────────────────────────────────────────────────────────────────────
+async function cargarModelos() {
+  const log = (msg) => agregarLog(msg);
 
-// HUD
-const hudPostura  = $("hud-postura");
-const hudConf     = $("hud-conf");
-const hudDx       = $("hud-dx");
-const hudSwitch   = $("hud-switch-bar-label");
-const switchWrap  = $("switch-progress-wrap");
-const switchBar   = $("switch-progress-bar");
-
-// Stats panel
-const statPostura = $("stat-postura");
-const statEstado  = $("stat-estado");
-const statConf    = $("stat-conf");
-const statModelo  = $("stat-modelo");
-const statDx      = $("stat-dx");
-const statTiempo  = $("stat-tiempo");
-const statFrames  = $("stat-frames");
-const statCapt    = $("stat-capturas");
-const confFill    = $("conf-bar-fill");
-const histList    = $("historial-list");
-const switchInfoVal = $("switch-info-val");
-const datasetCd   = $("dataset-countdown");
-const badgeModelo = $("badge-modelo");
-const badgeDB     = $("badge-db");
-const displayUUID = $("display-uuid");
-
-// ══════════════════════════════════════════════════════════════════
-// INIT — consent modal
-// ══════════════════════════════════════════════════════════════════
-document.addEventListener("DOMContentLoaded", () => {
-  $("btn-accept").addEventListener("click", onAcceptConsent);
-  $("btn-decline").addEventListener("click", () => {
-    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;
-      font-family:monospace;color:#7a8299;background:#0d0f14;font-size:1rem;">
-      Monitoreo cancelado. Puedes cerrar esta página.</div>`;
-  });
-});
-
-async function onAcceptConsent() {
-  $("consent-overlay").classList.remove("active");
-  $("consent-overlay").classList.add("hidden");
-  $("app").classList.remove("hidden");
-
-  initSupabase();
-  await loadModels();
-  await enumerateCameras();
-  bindUI();
-  startTimer();
-}
-
-// ══════════════════════════════════════════════════════════════════
-// SUPABASE
-// ══════════════════════════════════════════════════════════════════
-function initSupabase() {
-  try {
-    sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-    badgeDB.textContent = "DB ●";
-    badgeDB.classList.remove("offline");
-    console.log("✅ Supabase conectado");
-  } catch (e) {
-    console.error("Supabase init error:", e);
-    badgeDB.textContent = "DB ○";
-    badgeDB.classList.add("offline");
-  }
-}
-
-async function insertarRegistro(postura, confianza, dx, modelo) {
-  if (!sbClient) return;
-  try {
-    const { error } = await sbClient.from("posturas").insert([{
-      usuario_uuid:   state.uuid,
-      postura,
-      confianza:    parseFloat(confianza.toFixed(4)),
-      modelo,
-      dx_hombros:   parseFloat(dx.toFixed(4)),
-      consentimiento: true,
-      cam_id:         0,
-      timestamp:    new Date().toISOString(),
-    }]);
-    if (error) throw error;
-    state.capturas++;
-    statCapt.textContent = state.capturas;
-  } catch (e) {
-    console.warn("Supabase insert error:", e.message);
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════
-// MODELOS ONNX
-// ══════════════════════════════════════════════════════════════════
-async function loadModels() {
-  ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+  log("⏳ Cargando runtime ONNX...");
+  // ort ya está cargado vía CDN en index.html
 
   for (const tipo of ["frontal", "lateral"]) {
     try {
-      const [scalerSess, modelSess, meta] = await Promise.all([
-        ort.InferenceSession.create(MODEL_PATHS[tipo].scaler),
-        ort.InferenceSession.create(MODEL_PATHS[tipo].model),
-        fetch(MODEL_PATHS[tipo].meta).then(r => r.json()),
+      log(`⏳ Cargando modelo ${tipo}...`);
+      const [sess_scaler, sess_model, meta] = await Promise.all([
+        ort.InferenceSession.create(`models/scaler_${tipo}.onnx`),
+        ort.InferenceSession.create(`models/modelo_${tipo}.onnx`),
+        fetch(`models/metadata_${tipo}.json`).then(r => r.json()),
       ]);
-      state.sessions[tipo] = { scaler: scalerSess, model: modelSess, meta };
-      console.log(`✅ Modelo ${tipo} cargado — ${meta.n_features} features, clases: ${meta.clases}`);
-    } catch (e) {
-      console.error(`❌ Error cargando modelo ${tipo}:`, e);
+      modelos[tipo] = { sess_scaler, sess_model, meta };
+      log(`✅ Modelo ${tipo} cargado (${meta.clases.join(", ")})`);
+    } catch (err) {
+      log(`❌ Error modelo ${tipo}: ${err.message}`);
     }
   }
 }
 
-// ── Inferencia ────────────────────────────────────────────────────
-async function inferir(landmarks, tipo) {
-  const { scaler, model, meta } = state.sessions[tipo];
-  if (!scaler || !model || !meta) return null;
+// ─────────────────────────────────────────────────────────────────────────────
+// INFERENCIA
+// ─────────────────────────────────────────────────────────────────────────────
+async function clasificar(landmarks, tipo) {
+  const m = modelos[tipo];
+  if (!m) return null;
+  const { sess_scaler, sess_model, meta } = m;
 
-  // Extraer features en el orden exacto del metadata
+  // Extraer features en el orden de meta.feature_names
   const row = {};
-  for (const lm of Object.values(POSE_LM_MAP)) {
-    row[`${lm.name}_x`] = landmarks[lm.idx].x;
-    row[`${lm.name}_y`] = landmarks[lm.idx].y;
-    row[`${lm.name}_z`] = landmarks[lm.idx].z;
+  for (const lm of Object.values(window.poseLib.PoseLandmark || {})) {
+    // MediaPipe Holistic/Pose devuelve landmarks como array
+  }
+  // Construir vector usando el nombre de cada feature
+  const feat = new Float32Array(meta.feature_names.length);
+  for (let i = 0; i < meta.feature_names.length; i++) {
+    const fname = meta.feature_names[i];
+    // fname es p.ej. "nose_x", "left_shoulder_y"
+    const parts = fname.split("_");
+    const coord = parts.pop();               // "x", "y" o "z"
+    const lmName = parts.join("_").toUpperCase(); // "NOSE", "LEFT_SHOULDER"
+    const idx = window.poseLib.POSE_LANDMARKS?.[lmName] ?? landmarkIndexFromName(lmName);
+    if (idx !== undefined && landmarks[idx]) {
+      feat[i] = landmarks[idx][coord] ?? 0;
+    }
   }
 
-  const feat = new Float32Array(meta.feature_names.map(f => row[f] ?? 0.0));
+  const t_in = new ort.Tensor("float32", feat, [1, feat.length]);
+  const scaled = await sess_scaler.run({ float_input: t_in });
+  const t_scaled = scaled[Object.keys(scaled)[0]];
+  const result  = await sess_model.run({ float_input: t_scaled });
 
-  // Scaler
-  const scalerInput = { float_input: new ort.Tensor("float32", feat, [1, meta.n_features]) };
-  const scalerOut   = await scaler.run(scalerInput);
-  const scaled      = scalerOut[scaler.outputNames[0]];
+  // Probabilidades
+  const probaKey = Object.keys(result).find(k => result[k].dims.length === 2);
+  const proba    = probaKey ? result[probaKey].data : null;
+  if (!proba) return null;
 
-  // Random Forest
-  const modelInput  = { float_input: scaled };
-  const modelOut    = await model.run(modelInput);
-
-  // output[0] = label string, output[1] = probabilities
-  const proba = modelOut[model.outputNames[1]].data;  // Float32Array (n_classes,)
-  let maxIdx = 0;
-  for (let i = 1; i < proba.length; i++) {
-    if (proba[i] > proba[maxIdx]) maxIdx = i;
+  let maxP = -1, maxIdx = 0;
+  for (let i = 0; i < proba.length; i++) {
+    if (proba[i] > maxP) { maxP = proba[i]; maxIdx = i; }
   }
-
-  return {
-    postura:  meta.clases[maxIdx],
-    confianza: proba[maxIdx],
-    proba,
-    clases:   meta.clases,
-  };
+  return { clase: meta.clases[maxIdx], confianza: maxP, proba: Array.from(proba), clases: meta.clases };
 }
 
-// ── Mapa MediaPipe PoseLandmark ───────────────────────────────────
-// Generado desde la enumeración de MediaPipe (33 landmarks)
-const POSE_LM_NAMES = [
-  "nose","left_eye_inner","left_eye","left_eye_outer",
-  "right_eye_inner","right_eye","right_eye_outer",
-  "left_ear","right_ear","mouth_left","mouth_right",
-  "left_shoulder","right_shoulder",
-  "left_elbow","right_elbow",
-  "left_wrist","right_wrist",
-  "left_pinky","right_pinky",
-  "left_index","right_index",
-  "left_thumb","right_thumb",
-  "left_hip","right_hip",
-  "left_knee","right_knee",
-  "left_ankle","right_ankle",
-  "left_heel","right_heel",
-  "left_foot_index","right_foot_index",
-];
-const POSE_LM_MAP = {};
-POSE_LM_NAMES.forEach((name, idx) => { POSE_LM_MAP[name] = { name, idx }; });
+// Helper: nombre MediaPipe → índice numérico (tabla fija)
+const POSE_LM_INDEX = {
+  NOSE:0, LEFT_EYE_INNER:1, LEFT_EYE:2, LEFT_EYE_OUTER:3,
+  RIGHT_EYE_INNER:4, RIGHT_EYE:5, RIGHT_EYE_OUTER:6,
+  LEFT_EAR:7, RIGHT_EAR:8, MOUTH_LEFT:9, MOUTH_RIGHT:10,
+  LEFT_SHOULDER:11, RIGHT_SHOULDER:12,
+  LEFT_ELBOW:13, RIGHT_ELBOW:14, LEFT_WRIST:15, RIGHT_WRIST:16,
+  LEFT_PINKY:17, RIGHT_PINKY:18, LEFT_INDEX:19, RIGHT_INDEX:20,
+  LEFT_THUMB:21, RIGHT_THUMB:22,
+  LEFT_HIP:23, RIGHT_HIP:24, LEFT_KNEE:25, RIGHT_KNEE:26,
+  LEFT_ANKLE:27, RIGHT_ANKLE:28, LEFT_HEEL:29, RIGHT_HEEL:30,
+  LEFT_FOOT_INDEX:31, RIGHT_FOOT_INDEX:32,
+};
+function landmarkIndexFromName(name) { return POSE_LM_INDEX[name]; }
 
-// ══════════════════════════════════════════════════════════════════
-// CÁMARA
-// ══════════════════════════════════════════════════════════════════
-async function enumerateCameras() {
-  try {
-    await navigator.mediaDevices.getUserMedia({ video: true }); // pedir permiso
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(d => d.kind === "videoinput");
-    selectCam.innerHTML = "";
-    videoDevices.forEach((d, i) => {
-      const opt = document.createElement("option");
-      opt.value = d.deviceId;
-      opt.textContent = d.label || `Cámara ${i + 1}`;
-      selectCam.appendChild(opt);
-    });
-  } catch (e) {
-    console.warn("No se pudo enumerar cámaras:", e);
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// SWITCH AUTOMÁTICO DE MODELO
+// ─────────────────────────────────────────────────────────────────────────────
+function calcularDxHombros(landmarks) {
+  const lh = landmarks[11]; // LEFT_SHOULDER
+  const rh = landmarks[12]; // RIGHT_SHOULDER
+  if (!lh || !rh) return null;
+  return Math.abs(lh.x - rh.x);
 }
 
-// ══════════════════════════════════════════════════════════════════
-// UUID anónimo
-// ══════════════════════════════════════════════════════════════════
-function getOrCreateUUID() {
-  let uuid = localStorage.getItem("postura_uuid");
-  if (!uuid) {
-    uuid = crypto.randomUUID ? crypto.randomUUID()
-      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
-          const r = Math.random() * 16 | 0;
-          return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-        });
-    localStorage.setItem("postura_uuid", uuid);
-  }
-  return uuid;
-}
-
-// ══════════════════════════════════════════════════════════════════
-// MEDIAPIPE POSE + PROCESAMIENTO
-// ══════════════════════════════════════════════════════════════════
-function startPose(deviceId) {
-  pose = new Pose({
-    locateFile: file =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-  });
-
-  pose.setOptions({
-    modelComplexity:       1,
-    smoothLandmarks:       true,
-    enableSegmentation:    false,
-    smoothSegmentation:    false,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence:  0.5,
-  });
-
-  pose.onResults(onPoseResults);
-
-  const constraints = {
-    video: {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width:  { ideal: 640 },
-      height: { ideal: 480 },
-    },
-  };
-
-  camera = new Camera(video, {
-    onFrame: async () => {
-      if (state.running) {
-        canvasPose.width  = video.videoWidth  || 640;
-        canvasPose.height = video.videoHeight || 480;
-        await pose.send({ image: video });
-      }
-    },
-    width:  640,
-    height: 480,
-    facingMode: "user",
-  });
-
-  // Override camera constraints to use selected device
-  if (deviceId) {
-    navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-      video.srcObject = stream;
-    });
-  }
-
-  camera.start();
-}
-
-// ── Calcular dx hombros ───────────────────────────────────────────
-function calcDx(landmarks) {
-  const lIdx = POSE_LM_NAMES.indexOf("left_shoulder");
-  const rIdx = POSE_LM_NAMES.indexOf("right_shoulder");
-  return Math.abs(landmarks[lIdx].x - landmarks[rIdx].x);
-}
-
-// ── Switch lógica ─────────────────────────────────────────────────
 function evaluarSwitch(dx) {
-  const ahora = Date.now();
-  let vista;
-  if      (dx > UMBRAL_FRONTAL) vista = "frontal";
-  else if (dx < UMBRAL_LATERAL) vista = "lateral";
-  else { resetCandidato(); return false; }
+  if (modoActivo !== "auto") return false;
 
-  if (vista === state.modelo) { resetCandidato(); return false; }
+  let candidato = null;
+  if (dx > UMBRAL_FRONTAL) candidato = "frontal";
+  else if (dx < UMBRAL_LATERAL) candidato = "lateral";
 
-  if (state.candidato !== vista) {
-    state.candidato  = vista;
-    state.tCandidato = ahora;
+  if (!candidato || candidato === tipoActual) {
+    switchCandidato  = null;
+    switchTimestamp  = null;
     return false;
   }
 
-  const elapsed = ahora - state.tCandidato;
-  const pct     = Math.min(elapsed / SWITCH_DELAY_MS, 1);
-  switchBar.style.width = `${pct * 100}%`;
-  switchWrap.classList.remove("hidden");
-  const resta = ((SWITCH_DELAY_MS - elapsed) / 1000).toFixed(1);
-  hudSwitch.textContent = `→ ${vista.toUpperCase()} ${resta}s`;
-  hudSwitch.classList.remove("hidden");
-  switchInfoVal.textContent = `Pendiente → ${vista} (${resta}s)`;
-  switchInfoVal.className   = "switch-info-val pending";
+  if (switchCandidato !== candidato) {
+    switchCandidato = candidato;
+    switchTimestamp = Date.now();
+    return false;
+  }
 
-  if (elapsed >= SWITCH_DELAY_MS) {
-    state.modelo    = vista;
-    resetCandidato();
-    actualizarBadgeModelo();
+  if (Date.now() - switchTimestamp >= SWITCH_DELAY_MS) {
+    tipoActual      = switchCandidato;
+    switchCandidato = null;
+    switchTimestamp = null;
+    agregarLog(`🔄 Switch automático → ${tipoActual.toUpperCase()}`);
+    actualizarBadgeModo();
     return true;
   }
   return false;
 }
 
-function resetCandidato() {
-  state.candidato  = null;
-  state.tCandidato = null;
-  switchWrap.classList.add("hidden");
-  hudSwitch.classList.add("hidden");
-  switchInfoVal.textContent = "Estable";
-  switchInfoVal.className   = "switch-info-val";
-  switchBar.style.width     = "0%";
+// ─────────────────────────────────────────────────────────────────────────────
+// RESOLUCIÓN DEL TIPO EFECTIVO (incluye lateral-frontal)
+// ─────────────────────────────────────────────────────────────────────────────
+function tipoEfectivo() {
+  if (modoActivo === "auto")            return tipoActual;
+  if (modoActivo === "lateral-frontal") return "lateral";  // usa modelo lateral
+  return modoActivo;                                        // frontal o lateral forzado
 }
 
-// ── Dibujar esqueleto ─────────────────────────────────────────────
-const CONNECTIONS = [
-  [11,12],[11,13],[13,15],[12,14],[14,16],
-  [11,23],[12,24],[23,24],
-  [23,25],[25,27],[24,26],[26,28],
-  [0,1],[1,2],[2,3],[3,7],[0,4],[4,5],[5,6],[6,8],
-  [9,10],
-];
-
-function drawSkeleton(ctx, landmarks, color, alpha = 1) {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-
-  // Conexiones
-  ctx.strokeStyle = color === "green" ? "#00e676" : "#00e5ff";
-  ctx.lineWidth   = 2;
-  for (const [a, b] of CONNECTIONS) {
-    const la = landmarks[a], lb = landmarks[b];
-    if (la.visibility > 0.4 && lb.visibility > 0.4) {
-      ctx.beginPath();
-      ctx.moveTo(la.x * w, la.y * h);
-      ctx.lineTo(lb.x * w, lb.y * h);
-      ctx.stroke();
-    }
-  }
-
-  // Puntos
-  for (const lm of landmarks) {
-    if (lm.visibility > 0.4) {
-      ctx.beginPath();
-      ctx.arc(lm.x * w, lm.y * h, 4, 0, Math.PI * 2);
-      ctx.fillStyle = color === "green" ? "#69ff47" : "#00e5ff";
-      ctx.fill();
-    }
-  }
-  ctx.restore();
-}
-
-// ── Blur rostro (landmarks cara) ─────────────────────────────────
-const FACE_LANDMARKS = [0,1,2,3,4,5,6,7,8,9,10];
-
-function blurFace(landmarks) {
-  const w = canvasPose.width;
-  const h = canvasPose.height;
-  const facePts = FACE_LANDMARKS.map(i => landmarks[i]).filter(l => l.visibility > 0.3);
-  if (facePts.length === 0) return;
-
-  const xs = facePts.map(l => l.x * w);
-  const ys = facePts.map(l => l.y * h);
-  const xMin = Math.max(0, Math.min(...xs) - 40);
-  const yMin = Math.max(0, Math.min(...ys) - 40);
-  const xMax = Math.min(w, Math.max(...xs) + 40);
-  const yMax = Math.min(h, Math.max(...ys) + 40);
-  const rw = xMax - xMin;
-  const rh = yMax - yMin;
-  if (rw < 10 || rh < 10) return;
-
-  // Obtener pixel data del video y aplicar blur simple
-  ctxPose.save();
-  ctxPose.filter = "blur(18px)";
-  ctxPose.drawImage(video, xMin, yMin, rw, rh, xMin, yMin, rw, rh);
-  ctxPose.restore();
-}
-
-// ── Callback principal de MediaPipe ──────────────────────────────
-async function onPoseResults(results) {
-  if (!state.running) return;
-
-  const w = canvasPose.width;
-  const h = canvasPose.height;
-
-  // Dibujar imagen del video
-  ctxPose.clearRect(0, 0, w, h);
-  ctxPose.drawImage(results.image, 0, 0, w, h);
-
-  if (!results.poseLandmarks) {
-    updateHUD("Sin detección", 0, 0);
+// ─────────────────────────────────────────────────────────────────────────────
+// LOOP PRINCIPAL DE DETECCIÓN
+// ─────────────────────────────────────────────────────────────────────────────
+async function procesarFrame(landmarks) {
+  if (!landmarks || landmarks.length === 0) {
+    mostrarEstado("Sin detección", null, 0);
+    actualizarTiempoMala(false);
     return;
   }
 
-  const lm = results.poseLandmarks;
+  const dx = calcularDxHombros(landmarks);
+  if (dx !== null) evaluarSwitch(dx);
 
-  // Blur de rostro
-  if (state.blurActivo) {
-    blurFace(lm);
-  }
-
-  // Calcular dx y evaluar switch
-  const dx = calcDx(lm);
-  evaluarSwitch(dx);
-
-  // Inferencia
-  const res = await inferir(lm, state.modelo);
+  const tipo = tipoEfectivo();
+  const res  = await clasificar(landmarks, tipo);
   if (!res) return;
 
-  const { postura, confianza } = res;
-  const esCorrecta = postura === POSTURA_CORRECTA;
+  const { clase, confianza } = res;
+  const esCorrecta = clase === POSTURA_CORRECTA;
 
-  // Dibujar esqueleto
-  const skelColor = state.modelo === "frontal" ? "green" : "cyan";
-  drawSkeleton(ctxPose, lm, skelColor);
+  // Estadísticas
+  conteoPosturas[clase] = (conteoPosturas[clase] || 0) + 1;
 
-  // Registro sesión
-  state.frames++;
-  const tsNow = Date.now();
-  state.datosCSV.push({
-    timestamp:  new Date().toISOString(),
-    postura,
-    confianza:  confianza.toFixed(4),
-    modelo:     state.modelo,
-    dx_hombros: dx.toFixed(4),
-  });
+  // HUD
+  mostrarEstado(clase, esCorrecta, confianza, dx, tipo);
 
-  // Captura periódica → Supabase
-  if (tsNow - state.tUltimaCaptura >= CAPTURE_INTERVAL) {
-    state.tUltimaCaptura = tsNow;
-    insertarRegistro(postura, confianza, dx, state.modelo);
-  }
-
-  // Historial
-  pushHistorial(postura, confianza, state.modelo);
-
-  // UI update
-  updateHUD(postura, confianza, dx, esCorrecta);
-  updateStats(postura, confianza, dx, esCorrecta);
+  // Tiempo mala postura + alertas Telegram
+  actualizarTiempoMala(!esCorrecta, clase);
 }
 
-// ══════════════════════════════════════════════════════════════════
-// UI updates
-// ══════════════════════════════════════════════════════════════════
-function updateHUD(postura, confianza, dx, esCorrecta = true) {
-  const label = POSE_LABELS[postura] || postura;
-  hudPostura.textContent = postura;
-  hudPostura.className   = "hud-postura" + (esCorrecta ? "" : " bad");
-  hudConf.textContent    = `conf: ${(confianza * 100).toFixed(0)}%`;
-  hudDx.textContent      = `dx: ${dx.toFixed(3)}`;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTIÓN DE TIEMPO DE MALA POSTURA
+// ─────────────────────────────────────────────────────────────────────────────
+function actualizarTiempoMala(esMala, clase) {
+  const ahora = Date.now();
 
-function updateStats(postura, confianza, dx, esCorrecta) {
-  const label = POSE_LABELS[postura] || postura;
-  statPostura.textContent = postura;
-  statEstado.textContent  = esCorrecta ? "✔ Postura correcta" : "✗ " + label;
-  statEstado.className    = "stat-estado" + (esCorrecta ? "" : " bad");
-  statConf.textContent    = `${(confianza * 100).toFixed(1)}%`;
-  statDx.textContent      = dx.toFixed(3);
-  statFrames.textContent  = state.frames;
-  confFill.style.width    = `${(confianza * 100).toFixed(1)}%`;
-
-  // Countdown próxima captura
-  const elapsed   = Date.now() - state.tUltimaCaptura;
-  const remaining = Math.max(0, Math.ceil((CAPTURE_INTERVAL - elapsed) / 1000));
-  datasetCd.textContent = `${remaining}s`;
-}
-
-function actualizarBadgeModelo() {
-  badgeModelo.textContent = state.modelo.toUpperCase();
-  badgeModelo.className   = `badge badge-${state.modelo}`;
-  statModelo.textContent  = state.modelo.toUpperCase();
-}
-
-function pushHistorial(postura, confianza, modelo) {
-  state.historial.unshift({ postura, confianza, modelo });
-  if (state.historial.length > HISTORIAL_MAX) state.historial.pop();
-
-  histList.innerHTML = "";
-  for (const h of state.historial) {
-    const esOk  = h.postura === POSTURA_CORRECTA;
-    const label = POSE_LABELS[h.postura] || h.postura;
-    const div   = document.createElement("div");
-    div.className = `historial-item ${esOk ? "ok" : "bad"}`;
-    div.innerHTML = `
-      <span class="historial-postura">${h.postura}</span>
-      <span class="historial-conf">${(h.confianza * 100).toFixed(0)}%</span>
-      <span class="historial-modelo">${h.modelo[0].toUpperCase()}</span>
-    `;
-    histList.appendChild(div);
-  }
-}
-
-// ── Timer sesión ──────────────────────────────────────────────────
-function startTimer() {
-  setInterval(() => {
-    if (!state.running || !state.tInicio) return;
-    const seg = Math.floor((Date.now() - state.tInicio) / 1000);
-    const min = Math.floor(seg / 60);
-    const s   = seg % 60;
-    statTiempo.textContent = min > 0
-      ? `${min}m ${s.toString().padStart(2, "0")}s`
-      : `${seg}s`;
-  }, 1000);
-}
-
-// ══════════════════════════════════════════════════════════════════
-// BIND UI EVENTS
-// ══════════════════════════════════════════════════════════════════
-function bindUI() {
-  btnStart.addEventListener("click", iniciar);
-  btnStop.addEventListener("click",  detener);
-  btnBlur.addEventListener("click",  toggleBlur);
-  btnCapture.addEventListener("click", capturaManual);
-  btnExport.addEventListener("click",  exportarCSV);
-}
-
-// ── Iniciar ───────────────────────────────────────────────────────
-async function iniciar() {
-  state.uuid      = getOrCreateUUID();
-  displayUUID.textContent = state.uuid.slice(0, 8) + "…";
-  state.running   = true;
-  state.tInicio   = Date.now();
-  state.tUltimaCaptura = 0;
-  state.frames    = 0;
-  state.capturas  = 0;
-  state.datosCSV  = [];
-  state.historial = [];
-
-  actualizarBadgeModelo();
-  statModelo.textContent = state.modelo.toUpperCase();
-
-  btnStart.classList.add("hidden");
-  btnStop.classList.remove("hidden");
-
-  const deviceId = selectCam.value || undefined;
-  startPose(deviceId);
-}
-
-// ── Detener ───────────────────────────────────────────────────────
-function detener() {
-  state.running = false;
-  if (camera) camera.stop();
-  if (pose)   pose.close();
-  camera = null;
-  pose   = null;
-
-  ctxPose.clearRect(0, 0, canvasPose.width, canvasPose.height);
-  hudPostura.textContent = "—";
-  hudConf.textContent    = "conf: —";
-  hudDx.textContent      = "dx: —";
-
-  btnStop.classList.add("hidden");
-  btnStart.classList.remove("hidden");
-}
-
-// ── Blur toggle ───────────────────────────────────────────────────
-function toggleBlur() {
-  state.blurActivo = !state.blurActivo;
-  btnBlur.textContent = state.blurActivo ? "🔒 Blur" : "🔓 Blur";
-  btnBlur.className = state.blurActivo
-    ? "btn-secondary active-blur"
-    : "btn-secondary";
-}
-
-// ── Captura manual → Supabase ─────────────────────────────────────
-async function capturaManual() {
-  if (!state.running) return;
-  const last = state.datosCSV[state.datosCSV.length - 1];
-  if (!last) return;
-  await insertarRegistro(
-    last.postura,
-    parseFloat(last.confianza),
-    parseFloat(last.dx_hombros),
-    last.modelo
-  );
-  // Flash visual
-  btnCapture.textContent = "✅ Guardado";
-  setTimeout(() => { btnCapture.textContent = "📸 Capturar"; }, 1500);
-}
-
-// ── Exportar CSV ──────────────────────────────────────────────────
-function exportarCSV() {
-  if (!state.datosCSV.length) {
-    alert("Sin datos aún. Inicia el monitoreo primero.");
+  if (!esMala) {
+    tMalaPosInicio = null;
+    actualizarBarraMala(0);
     return;
   }
-  const headers = Object.keys(state.datosCSV[0]).join(",");
-  const rows    = state.datosCSV.map(r => Object.values(r).join(",")).join("\n");
-  const blob    = new Blob([headers + "\n" + rows], { type: "text/csv" });
-  const url     = URL.createObjectURL(blob);
-  const a       = document.createElement("a");
-  a.href        = url;
-  a.download    = `postura_sesion_${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+
+  if (!tMalaPosInicio) tMalaPosInicio = ahora;
+  const segsMala = (ahora - tMalaPosInicio) / 1000;
+  actualizarBarraMala(segsMala);
+
+  // Disparar alerta Telegram si superó umbral y cooldown OK
+  if (segsMala >= MALA_POSTURA_UMBRAL_SEG) {
+    const ultimaDeEste = ultimaAlerta[clase] || 0;
+    if (ahora - ultimaDeEste >= COOLDOWN_ALERTA_MS) {
+      ultimaAlerta[clase] = ahora;
+      enviarAlertaTelegram(clase, Math.round(segsMala));
+    }
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TELEGRAM API
+// ─────────────────────────────────────────────────────────────────────────────
+async function enviarTelegram(texto) {
+  if (!TG.enabled) return false;
+  try {
+    const resp = await fetch(
+      `https://api.telegram.org/bot${TG.BOT_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id:    TG.CHAT_ID,
+          text:       texto,
+          parse_mode: "HTML",
+        }),
+      }
+    );
+    const data = await resp.json();
+    return data.ok;
+  } catch (e) {
+    console.warn("Telegram error:", e);
+    return false;
+  }
+}
+
+async function enviarConexionOk() {
+  const msg =
+    `✅ <b>Monitor de Postura conectado</b>\n\n` +
+    `📅 ${new Date().toLocaleString("es-EC")}\n` +
+    `🌐 Sistema listo para monitorear tu postura.\n` +
+    `⏱ Recibirás alertas si mantienes una mala postura por más de ${MALA_POSTURA_UMBRAL_SEG} segundos.`;
+  const ok = await enviarTelegram(msg);
+  if (ok) agregarLog("📬 Telegram: notificación de conexión enviada");
+}
+
+async function enviarAlertaTelegram(clase, segundos) {
+  alertasEnviadas++;
+  const etiqueta = ETIQUETAS_POSTURA[clase] || clase;
+  const consejo  = CONSEJOS_POSTURA[clase]  || "";
+  const msg =
+    `⚠️ <b>Alerta de Postura</b>\n\n` +
+    `📌 Postura: <b>${etiqueta}</b>\n` +
+    `⏱ Duración: <b>${segundos} segundos</b> consecutivos\n\n` +
+    `💡 ${consejo}\n\n` +
+    `📅 ${new Date().toLocaleTimeString("es-EC")}`;
+  await enviarTelegram(msg);
+  agregarLog(`📬 Telegram: alerta ${clase} enviada (${segundos}s)`);
+}
+
+async function enviarResumenSesion() {
+  if (!sesionInicio) return;
+  const durSeg = Math.round((Date.now() - sesionInicio) / 1000);
+  const min    = Math.floor(durSeg / 60);
+  const seg    = durSeg % 60;
+
+  // Ordenar posturas por frecuencia
+  const total = Object.values(conteoPosturas).reduce((a, b) => a + b, 0) || 1;
+  const sorted = Object.entries(conteoPosturas)
+    .filter(([k]) => k !== POSTURA_CORRECTA)
+    .sort(([, a], [, b]) => b - a);
+
+  let lineasMalas = sorted.slice(0, 3).map(([k, v]) => {
+    const pct    = ((v / total) * 100).toFixed(1);
+    const etiq   = ETIQUETAS_POSTURA[k] || k;
+    const consejo = CONSEJOS_POSTURA[k] || "";
+    return `  • <b>${etiq}</b> — ${pct}%\n    💡 ${consejo}`;
+  }).join("\n");
+
+  if (!lineasMalas) lineasMalas = "  ¡Excelente! No se detectaron posturas problemáticas.";
+
+  const pctBuena = (((conteoPosturas[POSTURA_CORRECTA] || 0) / total) * 100).toFixed(1);
+
+  const msg =
+    `📊 <b>Resumen de Sesión</b>\n\n` +
+    `⏱ Duración: <b>${min}m ${seg}s</b>\n` +
+    `✅ Postura correcta: <b>${pctBuena}%</b> del tiempo\n` +
+    `🚨 Alertas enviadas: ${alertasEnviadas}\n\n` +
+    `<b>Posturas a mejorar:</b>\n${lineasMalas}\n\n` +
+    `📅 ${new Date().toLocaleString("es-EC")}`;
+
+  const ok = await enviarTelegram(msg);
+  if (ok) agregarLog("📬 Telegram: resumen de sesión enviado");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI — HUD DE ESTADO
+// ─────────────────────────────────────────────────────────────────────────────
+function mostrarEstado(clase, esCorrecta, confianza, dx, tipo) {
+  const el = document.getElementById("postura-label");
+  if (!el) return;
+
+  const etiq  = ETIQUETAS_POSTURA[clase] || clase;
+  const color = esCorrecta ? "#00e676" : "#ff5252";
+  el.textContent  = etiq;
+  el.style.color  = color;
+
+  const conf = document.getElementById("confianza-label");
+  if (conf) conf.textContent = `${(confianza * 100).toFixed(0)}%`;
+
+  const dxEl = document.getElementById("dx-label");
+  if (dxEl && dx !== null && dx !== undefined) {
+    dxEl.textContent = `dx: ${dx.toFixed(3)}`;
+  }
+
+  const modoEl = document.getElementById("modo-activo-label");
+  if (modoEl) {
+    const mStr = modoActivo === "auto"
+      ? `AUTO:${tipoActual.toUpperCase()}`
+      : modoActivo.toUpperCase().replace("-", " ");
+    modoEl.textContent = mStr;
+  }
+}
+
+function actualizarBarraMala(segs) {
+  const barra = document.getElementById("barra-mala");
+  const label = document.getElementById("tiempo-mala-label");
+  if (!barra) return;
+  const pct = Math.min((segs / MALA_POSTURA_UMBRAL_SEG) * 100, 100);
+  barra.style.width = `${pct}%`;
+  barra.style.background = pct < 50 ? "#00e676" : pct < 85 ? "#ffab40" : "#ff5252";
+  if (label) label.textContent = `${Math.round(segs)}s / ${MALA_POSTURA_UMBRAL_SEG}s`;
+}
+
+function actualizarBadgeModo() {
+  const b = document.getElementById("badge-modo");
+  if (!b) return;
+  const labels = {
+    "frontal":          "🖥 FRONTAL",
+    "lateral":          "📐 LATERAL",
+    "lateral-frontal":  "📐 LAT-FRONTAL",
+    "auto":             "🔄 AUTO",
+  };
+  b.textContent = labels[modoActivo] || modoActivo.toUpperCase();
+}
+
+function agregarLog(msg) {
+  const el = document.getElementById("log-box");
+  if (!el) { console.log(msg); return; }
+  const ts = new Date().toLocaleTimeString("es-EC");
+  el.textContent = `[${ts}] ${msg}\n` + el.textContent.slice(0, 3000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTROL DE CÁMARA (MediaPipe Pose vía CDN)
+// ─────────────────────────────────────────────────────────────────────────────
+async function iniciarDeteccion() {
+  if (deteccionActiva) return;
+
+  deteccionActiva   = true;
+  sesionInicio      = Date.now();
+  conteoPosturas    = {};
+  alertasEnviadas   = 0;
+  ultimaAlerta      = {};
+  tMalaPosInicio    = null;
+
+  agregarLog("▶ Iniciando detección...");
+
+  const videoEl = document.getElementById("webcam");
+
+  try {
+    camera = new Camera(videoEl, {
+      onFrame: async () => {
+        if (!deteccionActiva) return;
+        await pose.send({ image: videoEl });
+      },
+      width: 640, height: 480,
+    });
+
+    pose = new Pose({
+      locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`,
+    });
+    pose.setOptions({
+      modelComplexity:        1,
+      smoothLandmarks:        true,
+      enableSegmentation:     false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence:  0.5,
+    });
+    pose.onResults(async (results) => {
+      dibujarPose(results);
+      if (results.poseLandmarks) {
+        await procesarFrame(results.poseLandmarks);
+      } else {
+        mostrarEstado("Sin detección", null, 0);
+        actualizarTiempoMala(false);
+      }
+    });
+
+    await camera.start();
+    agregarLog("✅ Cámara iniciada");
+
+    // Notificación de conexión Telegram
+    await enviarConexionOk();
+
+  } catch (err) {
+    agregarLog(`❌ Error cámara: ${err.message}`);
+    deteccionActiva = false;
+  }
+}
+
+async function detenerDeteccion() {
+  if (!deteccionActiva) return;
+  deteccionActiva = false;
+  if (camera) { await camera.stop(); camera = null; }
+  if (pose)   { await pose.close();  pose   = null; }
+  agregarLog("⏹ Detección detenida");
+
+  // Enviar resumen Telegram
+  await enviarResumenSesion();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANVAS — DIBUJO DEL ESQUELETO
+// ─────────────────────────────────────────────────────────────────────────────
+function dibujarPose(results) {
+  const canvas = document.getElementById("output-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (results.image) {
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+  }
+
+  if (results.poseLandmarks) {
+    const color = tipoEfectivo() === "frontal" ? "#00e676" : "#40c4ff";
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
+      { color: "#ffffff44", lineWidth: 2 });
+    drawLandmarks(ctx, results.poseLandmarks,
+      { color, lineWidth: 1, radius: 4 });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIGURACIÓN DE MODOS (botones del UI)
+// ─────────────────────────────────────────────────────────────────────────────
+function setModo(modo) {
+  modoActivo  = modo;
+  tipoActual  = (modo === "auto") ? "frontal" : (modo === "lateral-frontal" ? "lateral" : modo);
+  switchCandidato = null;
+  switchTimestamp = null;
+  actualizarBadgeModo();
+  agregarLog(`🔀 Modo cambiado → ${modo.toUpperCase()}`);
+
+  // Resaltar botón activo
+  document.querySelectorAll(".btn-modo").forEach(b => {
+    b.classList.toggle("activo", b.dataset.modo === modo);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIGURACIÓN TELEGRAM (guardar en localStorage)
+// ─────────────────────────────────────────────────────────────────────────────
+function guardarConfigTelegram() {
+  const token  = document.getElementById("tg-token")?.value.trim()   || "";
+  const chatId = document.getElementById("tg-chat-id")?.value.trim() || "";
+
+  if (!token || !chatId) {
+    alert("Completa el Token del Bot y el Chat ID.");
+    return false;
+  }
+  localStorage.setItem("tg_bot_token", token);
+  localStorage.setItem("tg_chat_id",   chatId);
+  TG.BOT_TOKEN = token;
+  TG.CHAT_ID   = chatId;
+  return true;
+}
+
+async function probarTelegram() {
+  if (!guardarConfigTelegram()) return;
+  const ok = await enviarTelegram("🤖 <b>Monitor de Postura</b> — conexión de prueba exitosa ✅");
+  alert(ok
+    ? "✅ Mensaje enviado a Telegram correctamente."
+    : "❌ Error al enviar. Verifica el token y el chat ID.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT — Se ejecuta cuando el DOM está listo
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  // Pre-cargar valores de Telegram en los campos si existen
+  const tokenEl  = document.getElementById("tg-token");
+  const chatIdEl = document.getElementById("tg-chat-id");
+  if (tokenEl  && TG.BOT_TOKEN) tokenEl.value  = TG.BOT_TOKEN;
+  if (chatIdEl && TG.CHAT_ID)   chatIdEl.value = TG.CHAT_ID;
+
+  // Botones de modo
+  document.querySelectorAll(".btn-modo").forEach(btn => {
+    btn.addEventListener("click", () => setModo(btn.dataset.modo));
+  });
+
+  // Botón iniciar/detener
+  document.getElementById("btn-iniciar")?.addEventListener("click", iniciarDeteccion);
+  document.getElementById("btn-detener")?.addEventListener("click", detenerDeteccion);
+
+  // Botón probar Telegram
+  document.getElementById("btn-probar-tg")?.addEventListener("click", probarTelegram);
+  // Botón guardar config Telegram
+  document.getElementById("btn-guardar-tg")?.addEventListener("click", () => {
+    if (guardarConfigTelegram()) alert("✅ Configuración de Telegram guardada.");
+  });
+
+  // Cargar modelos
+  await cargarModelos();
+  actualizarBadgeModo();
+
+  agregarLog("✅ Sistema listo. Configura Telegram y presiona Iniciar.");
+});

@@ -3,171 +3,291 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PosturaML — Monitor de Postura</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Monitor de Postura ML</title>
+
+  <!-- ONNX Runtime -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
   <!-- MediaPipe Pose -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-  <!-- ONNX Runtime Web -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-  <!-- Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════ CONSENT MODAL -->
-<div id="consent-overlay" class="overlay active">
+<!-- ═══════════════════════════ MODAL CONSENTIMIENTO ════════════════════════ -->
+<div id="modal-consent" class="modal-overlay active">
   <div class="modal-box">
-    <div class="modal-icon">🔒</div>
-    <h2>Consentimiento Informado</h2>
-    <p>Este sistema analiza tu postura corporal en tiempo real usando la cámara de tu dispositivo.</p>
-    <ul>
-      <li>Solo se almacenan <strong>landmarks del esqueleto</strong>, nunca imágenes de tu rostro.</li>
-      <li>Se usa un <strong>UUID anónimo</strong> — no se recopilan datos personales.</li>
-      <li>Los datos sirven para <strong>investigación académica</strong> sobre ergonomía.</li>
-      <li>Puedes detener el monitoreo en cualquier momento.</li>
-    </ul>
-    <div class="modal-actions">
-      <button id="btn-accept" class="btn-primary">Acepto y continuar</button>
-      <button id="btn-decline" class="btn-ghost">No acepto</button>
+    <div class="modal-header">
+      <span class="modal-icon">🧠</span>
+      <h2>Monitor de Postura ML</h2>
+      <p class="modal-subtitle">Sistema de análisis postural con IA — ESPE 2025</p>
+    </div>
+
+    <!-- Paso 1: Consentimiento -->
+    <div class="modal-step" id="step-consent">
+      <h3>Términos de uso</h3>
+      <div class="terms-box">
+        <p><strong>1. Cámara:</strong> Se requiere acceso a tu cámara web. Las imágenes se procesan <em>localmente</em> en tu dispositivo — no se envían a ningún servidor.</p>
+        <p><strong>2. Privacidad:</strong> No se almacenan imágenes ni videos. Solo se procesan coordenadas numéricas de tus articulaciones.</p>
+        <p><strong>3. Datos:</strong> Las sesiones se registran en Supabase con fines académicos anonimizados (proyecto de tesis ESPE).</p>
+        <p><strong>4. Notificaciones:</strong> Si configuras Telegram (opcional), recibirás alertas cuando se detecte mala postura prolongada.</p>
+        <p><strong>5. Limitación:</strong> Esta herramienta es de asistencia académica. No reemplaza consejo médico profesional.</p>
+      </div>
+      <label class="check-label">
+        <input type="checkbox" id="check-consent" />
+        <span>He leído y acepto los términos</span>
+      </label>
+      <button class="btn-primary" id="btn-consent-next">Continuar →</button>
+    </div>
+
+    <!-- Paso 2: Telegram (opcional) -->
+    <div class="modal-step hidden" id="step-telegram">
+      <h3>📱 Notificaciones Telegram <span class="badge-optional">Opcional</span></h3>
+      <p class="tg-info">Recibe alertas en Telegram cuando mantengas una mala postura por más de 20 segundos y un resumen al finalizar cada sesión.</p>
+
+      <div class="tg-steps">
+        <div class="tg-step">
+          <span class="tg-num">1</span>
+          <span>Busca tu bot en Telegram y envíale <code>/start</code></span>
+        </div>
+        <div class="tg-step">
+          <span class="tg-num">2</span>
+          <span>Copia el <strong>Token del Bot</strong> desde @BotFather</span>
+        </div>
+        <div class="tg-step">
+          <span class="tg-num">3</span>
+          <span>Obtén tu <strong>Chat ID</strong> enviando un mensaje al bot y visitando:<br>
+          <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code></span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Token del Bot</label>
+        <input type="text" id="tg-token" placeholder="123456789:AAF..." class="tg-input" />
+      </div>
+      <div class="form-group">
+        <label>Chat ID</label>
+        <input type="text" id="tg-chat-id" placeholder="987654321" class="tg-input" />
+      </div>
+
+      <div class="tg-btns">
+        <button class="btn-secondary" id="btn-probar-tg">🔔 Probar conexión</button>
+        <button class="btn-secondary" id="btn-guardar-tg">💾 Guardar</button>
+      </div>
+
+      <div class="modal-nav">
+        <button class="btn-ghost" id="btn-tg-skip">Saltar →</button>
+        <button class="btn-primary" id="btn-tg-next">Comenzar →</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════ MAIN APP -->
-<div id="app" class="hidden">
+<!-- ═══════════════════════════════ APP PRINCIPAL ════════════════════════════ -->
+<div id="app" class="app hidden">
 
-  <!-- HEADER -->
-  <header>
-    <div class="logo">
-      <span class="logo-icon">⬡</span>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🧠</span>
       <span class="logo-text">PosturaML</span>
     </div>
-    <div class="header-badges">
-      <span id="badge-modelo" class="badge badge-frontal">FRONTAL</span>
-      <span id="badge-switch" class="badge badge-neutral">AUTO</span>
-      <span id="badge-db" class="badge badge-db">DB ●</span>
+
+    <!-- Estado postura -->
+    <div class="card-estado">
+      <div class="estado-header">Estado actual</div>
+      <div id="postura-label" class="postura-label">Esperando...</div>
+      <div class="meta-row">
+        <span id="confianza-label" class="conf-label">—</span>
+        <span id="dx-label" class="dx-label">dx: —</span>
+      </div>
     </div>
-    <div class="header-uuid">
-      <span class="uuid-label">ID:</span>
-      <span id="display-uuid" class="uuid-val">—</span>
+
+    <!-- Barra mala postura -->
+    <div class="card-barra">
+      <div class="barra-header">
+        <span>Tiempo mala postura</span>
+        <span id="tiempo-mala-label" class="tiempo-label">0s / 20s</span>
+      </div>
+      <div class="barra-bg">
+        <div id="barra-mala" class="barra-fill" style="width:0%"></div>
+      </div>
     </div>
-  </header>
 
-  <!-- MAIN LAYOUT -->
-  <main>
+    <!-- Modo activo -->
+    <div class="card-modo">
+      <div class="modo-header">Modo de detección</div>
+      <div id="badge-modo" class="badge-modo">🔄 AUTO</div>
 
-    <!-- ── COLUMNA IZQUIERDA: CÁMARA ── -->
-    <section class="cam-section">
-      <div class="cam-wrapper">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="canvas-pose"></canvas>
-
-        <!-- HUD overlay -->
-        <div class="hud">
-          <div id="hud-postura" class="hud-postura">—</div>
-          <div class="hud-row">
-            <span id="hud-conf" class="hud-chip">conf: —</span>
-            <span id="hud-dx" class="hud-chip">dx: —</span>
-            <span id="hud-switch-bar-label" class="hud-chip hud-switch hidden">→ —</span>
-          </div>
-          <div id="switch-progress-wrap" class="switch-progress-wrap hidden">
-            <div id="switch-progress-bar" class="switch-progress-bar"></div>
-          </div>
-        </div>
-
-        <!-- Skeleton-only canvas (para capturas del dataset) -->
-        <canvas id="canvas-skeleton" class="hidden"></canvas>
+      <div class="btns-modo">
+        <button class="btn-modo activo" data-modo="auto"           title="Switch automático por dx de hombros">🔄 AUTO</button>
+        <button class="btn-modo"        data-modo="frontal"         title="Cámara frontal forzada">🖥 FRONTAL</button>
+        <button class="btn-modo"        data-modo="lateral"         title="Cámara lateral pura (perfil)">📐 LATERAL</button>
+        <button class="btn-modo"        data-modo="lateral-frontal" title="Cámara integrada girada de lado — usa modelo lateral">📐 LAT-FRONTAL</button>
       </div>
+      <p class="modo-desc" id="modo-desc-text">Auto: cambia entre frontal y lateral según la separación de hombros.</p>
+    </div>
 
-      <!-- Controles de cámara -->
-      <div class="cam-controls">
-        <button id="btn-start" class="btn-primary">▶ Iniciar</button>
-        <button id="btn-stop"  class="btn-danger hidden">■ Detener</button>
-        <button id="btn-blur"  class="btn-secondary" title="Difuminar rostro">🔓 Blur</button>
-        <button id="btn-capture" class="btn-secondary" title="Capturar esqueleto ahora">📸 Capturar</button>
-        <select id="select-cam" class="cam-select"></select>
-      </div>
-    </section>
+    <!-- Controles -->
+    <div class="card-controles">
+      <button class="btn-iniciar" id="btn-iniciar">▶ Iniciar</button>
+      <button class="btn-detener" id="btn-detener">⏹ Detener</button>
+    </div>
 
-    <!-- ── COLUMNA DERECHA: STATS ── -->
-    <aside class="stats-panel">
-
-      <!-- Estado principal -->
-      <div class="stat-card stat-main">
-        <div class="stat-label">Postura detectada</div>
-        <div id="stat-postura" class="stat-big">—</div>
-        <div id="stat-estado" class="stat-estado">—</div>
-      </div>
-
-      <!-- Grid de métricas -->
-      <div class="stat-grid">
-        <div class="stat-mini">
-          <div class="stat-mini-label">Confianza</div>
-          <div id="stat-conf" class="stat-mini-val">—</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-label">Modelo activo</div>
-          <div id="stat-modelo" class="stat-mini-val">—</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-label">dx hombros</div>
-          <div id="stat-dx" class="stat-mini-val">—</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-label">Tiempo sesión</div>
-          <div id="stat-tiempo" class="stat-mini-val">0s</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-label">Frames</div>
-          <div id="stat-frames" class="stat-mini-val">0</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-label">Capturas DB</div>
-          <div id="stat-capturas" class="stat-mini-val">0</div>
+    <!-- Config Telegram (colapsable) -->
+    <details class="card-tg">
+      <summary>📱 Telegram</summary>
+      <div class="tg-config">
+        <label>Token Bot</label>
+        <input type="text" id="tg-token-sidebar" class="tg-input-sm" placeholder="token..." />
+        <label>Chat ID</label>
+        <input type="text" id="tg-chat-id-sidebar" class="tg-input-sm" placeholder="chat id..." />
+        <div class="tg-btns-sm">
+          <button class="btn-sm" id="btn-guardar-tg-sidebar">💾 Guardar</button>
+          <button class="btn-sm" id="btn-probar-tg-sidebar">🔔 Probar</button>
         </div>
       </div>
+    </details>
 
-      <!-- Barra de confianza -->
-      <div class="conf-bar-wrap">
-        <div class="conf-bar-label">Nivel de confianza</div>
-        <div class="conf-bar-track">
-          <div id="conf-bar-fill" class="conf-bar-fill" style="width:0%"></div>
-        </div>
+    <!-- Log -->
+    <div class="card-log">
+      <div class="log-header">Registro</div>
+      <pre id="log-box" class="log-box">Sistema iniciando...</pre>
+    </div>
+  </aside>
+
+  <!-- Panel principal: vídeo -->
+  <main class="main-panel">
+    <div class="video-wrapper">
+      <video id="webcam" class="webcam" autoplay muted playsinline></video>
+      <canvas id="output-canvas" class="output-canvas" width="640" height="480"></canvas>
+
+      <!-- Overlay de modo -->
+      <div class="video-overlay-modo">
+        <span id="modo-activo-label" class="overlay-modo-label">—</span>
       </div>
+    </div>
 
-      <!-- Historial -->
-      <div class="historial-wrap">
-        <div class="historial-label">Últimas detecciones</div>
-        <div id="historial-list" class="historial-list"></div>
+    <!-- Estadísticas de sesión -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-val" id="stat-tiempo">0:00</span>
+        <span class="stat-key">Sesión</span>
       </div>
-
-      <!-- Switch info -->
-      <div class="switch-info" id="switch-info-panel">
-        <div class="switch-info-label">Switch automático</div>
-        <div id="switch-info-val" class="switch-info-val">Estable</div>
-        <div class="switch-thresholds">
-          <span>Frontal si dx &gt; 0.15</span>
-          <span>Lateral si dx &lt; 0.10</span>
-          <span>Delay: 10s</span>
-        </div>
+      <div class="stat-item">
+        <span class="stat-val" id="stat-frames">0</span>
+        <span class="stat-key">Frames</span>
       </div>
-
-      <!-- Guardado dataset -->
-      <div class="dataset-wrap">
-        <div class="dataset-label">Dataset</div>
-        <div class="dataset-row">
-          <span class="dataset-mini-label">Próxima captura en</span>
-          <span id="dataset-countdown" class="dataset-countdown">—</span>
-        </div>
-        <button id="btn-export-csv" class="btn-secondary btn-full">⬇ Exportar CSV sesión</button>
+      <div class="stat-item">
+        <span class="stat-val" id="stat-alertas">0</span>
+        <span class="stat-key">Alertas TG</span>
       </div>
-
-    </aside>
+      <div class="stat-item">
+        <span class="stat-val" id="stat-buena">—</span>
+        <span class="stat-key">% Correcta</span>
+      </div>
+    </div>
   </main>
 </div>
 
 <script src="script.js"></script>
+<script>
+// ── Lógica del modal de consentimiento ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  const modalEl   = document.getElementById("modal-consent");
+  const appEl     = document.getElementById("app");
+  const stepC     = document.getElementById("step-consent");
+  const stepTG    = document.getElementById("step-telegram");
+
+  // Paso 1 → Paso 2
+  document.getElementById("btn-consent-next").addEventListener("click", () => {
+    if (!document.getElementById("check-consent").checked) {
+      alert("Debes aceptar los términos para continuar.");
+      return;
+    }
+    stepC.classList.add("hidden");
+    stepTG.classList.remove("hidden");
+  });
+
+  function cerrarModal() {
+    modalEl.classList.remove("active");
+    appEl.classList.remove("hidden");
+  }
+
+  document.getElementById("btn-tg-next").addEventListener("click", () => {
+    const t = document.getElementById("tg-token").value.trim();
+    const c = document.getElementById("tg-chat-id").value.trim();
+    if (t && c) guardarConfigTelegram();
+    cerrarModal();
+  });
+  document.getElementById("btn-tg-skip").addEventListener("click", cerrarModal);
+
+  // Sincronizar campos del sidebar con el modal
+  const syncSidebar = () => {
+    const t = localStorage.getItem("tg_bot_token") || "";
+    const c = localStorage.getItem("tg_chat_id")   || "";
+    const ts = document.getElementById("tg-token-sidebar");
+    const cs = document.getElementById("tg-chat-id-sidebar");
+    if (ts) ts.value = t;
+    if (cs) cs.value = c;
+  };
+
+  document.getElementById("btn-guardar-tg-sidebar")?.addEventListener("click", () => {
+    const t = document.getElementById("tg-token-sidebar").value.trim();
+    const c = document.getElementById("tg-chat-id-sidebar").value.trim();
+    if (!t || !c) { alert("Completa token y chat ID."); return; }
+    localStorage.setItem("tg_bot_token", t);
+    localStorage.setItem("tg_chat_id",   c);
+    TG.BOT_TOKEN = t; TG.CHAT_ID = c;
+    alert("✅ Guardado.");
+  });
+  document.getElementById("btn-probar-tg-sidebar")?.addEventListener("click", async () => {
+    const t = document.getElementById("tg-token-sidebar").value.trim();
+    const c = document.getElementById("tg-chat-id-sidebar").value.trim();
+    if (!t || !c) { alert("Completa token y chat ID."); return; }
+    TG.BOT_TOKEN = t; TG.CHAT_ID = c;
+    await probarTelegram();
+  });
+
+  // Tooltip de modos
+  const modoDescs = {
+    "auto":           "Auto: cambia entre frontal y lateral según la separación de hombros (dx).",
+    "frontal":        "Frontal: fuerza el modelo frontal. Usa cuando la cámara te mira de frente.",
+    "lateral":        "Lateral puro: cámara colocada al costado de tu silla, perfilada.",
+    "lateral-frontal":"Lateral-frontal: cámara integrada del laptop girada de lado. Usa el modelo lateral aunque MediaPipe vea los dos hombros.",
+  };
+  document.querySelectorAll(".btn-modo").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("modo-desc-text").textContent =
+        modoDescs[btn.dataset.modo] || "";
+    });
+  });
+
+  // Actualizar estadísticas de sesión cada segundo
+  setInterval(() => {
+    if (!sesionInicio) return;
+    const seg   = Math.floor((Date.now() - sesionInicio) / 1000);
+    const m     = Math.floor(seg / 60);
+    const s     = seg % 60;
+    const total = Object.values(conteoPosturas).reduce((a, b) => a + b, 0) || 1;
+    const buena = ((conteoPosturas["TUP"] || 0) / total * 100).toFixed(0);
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set("stat-tiempo",  `${m}:${String(s).padStart(2,"0")}`);
+    set("stat-frames",  total);
+    set("stat-alertas", alertasEnviadas);
+    set("stat-buena",   `${buena}%`);
+  }, 1000);
+
+  syncSidebar();
+});
+</script>
 </body>
 </html>
