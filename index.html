@@ -385,10 +385,8 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const chatId = await autoDetectarChatId();
       if (chatId) {
-        document.getElementById("tg-chat-id-modal").value = chatId;
         document.getElementById("chatid-ok-row").classList.remove("hidden");
         document.getElementById("chatid-ok-val").textContent = chatId;
-        mostrarToast(`✅ Chat ID: ${chatId}`);
       }
     } finally {
       btn.textContent = orig; btn.disabled = false;
@@ -441,10 +439,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.textContent = "⏳"; btn.disabled = true;
     try {
       const chatId = await autoDetectarChatId();
-      if (chatId) {
-        document.getElementById("tg-chat-id-sidebar").value = chatId;
-        actualizarDotTG();
-      }
+      if (chatId) actualizarDotTG();
     } finally {
       btn.textContent = orig; btn.disabled = false;
     }

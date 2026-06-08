@@ -287,45 +287,71 @@ function guardarChatId(chatId) {
   TG.CHAT_ID = chatId;
 }
 
-// Auto-detectar Chat ID usando el token interno
-async function autoDetectarChatId(targetInputIds = []) {
-  agregarLog("🔍 Buscando tu Chat ID...");
+// Auto-detectar Chat ID usando el token interno.
+// Rellena todos los campos conocidos y retorna el chatId (string) o null si falla.
+async function autoDetectarChatId() {
+  agregarLog("🔍 Buscando tu Chat ID en Telegram...");
   try {
+    // Verificar si el bot tiene webhook activo (bloquea getUpdates)
+    const whr = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo`);
+    const whd = await whr.json();
+    if (whd.ok && whd.result?.url && whd.result.url !== "") {
+      // Hay webhook activo — eliminarlo temporalmente para poder usar getUpdates
+      agregarLog("⚠ Webhook activo detectado, eliminando temporalmente...");
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook`);
+    }
+
     const r = await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=10&offset=-10`
+      `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=20&offset=-20`
     );
     const d = await r.json();
-    if (!d.ok) {
-      return { ok: false, msg: `❌ Error del bot: ${d.description}` };
-    }
-    if (!d.result || d.result.length === 0) {
-      return {
-        ok: false,
-        msg: "⚠ No hay mensajes recientes.\n\nPor favor:\n1. Abre Telegram\n2. Busca el bot por nombre\n3. Envíale cualquier mensaje\n4. Vuelve aquí y haz clic en Detectar de nuevo."
-      };
-    }
-    const last   = d.result[d.result.length - 1];
-    const chat   = last.message?.chat || last.callback_query?.message?.chat;
-    if (!chat) {
-      return { ok: false, msg: "No se pudo obtener el Chat ID. Envía un mensaje al bot e intenta de nuevo." };
-    }
-    const chatId = String(chat.id);
 
-    // Escribir en todos los campos indicados
-    targetInputIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = chatId;
-    });
-    // Sincronizar siempre todos los campos conocidos
+    if (!d.ok) {
+      mostrarToast(`❌ Error del bot: ${d.description}`);
+      agregarLog(`❌ getUpdates error: ${d.description}`);
+      return null;
+    }
+
+    if (!d.result || d.result.length === 0) {
+      mostrarToast("⚠ Sin mensajes. Envía /start al bot en Telegram primero.");
+      agregarLog("⚠ getUpdates: sin mensajes recientes");
+      return null;
+    }
+
+    // Buscar el chat en cualquier tipo de update
+    let chatId = null;
+    for (let i = d.result.length - 1; i >= 0; i--) {
+      const upd = d.result[i];
+      const chat = upd.message?.chat
+        || upd.callback_query?.message?.chat
+        || upd.channel_post?.chat
+        || upd.edited_message?.chat;
+      if (chat && chat.id) {
+        chatId = String(chat.id);
+        break;
+      }
+    }
+
+    if (!chatId) {
+      mostrarToast("No se detectó Chat ID. Envía un mensaje al bot e intenta de nuevo.");
+      agregarLog("⚠ No se encontró chat.id en los updates");
+      return null;
+    }
+
+    // Rellenar todos los campos de Chat ID en la página
     ["tg-chat-id-modal", "tg-chat-id-sidebar"].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = chatId;
     });
 
     agregarLog(`✅ Chat ID detectado: ${chatId}`);
-    return { ok: true, chatId };
+    mostrarToast(`✅ Chat ID detectado: ${chatId}`);
+    return chatId;
+
   } catch(e) {
-    return { ok: false, msg: `❌ Error de red: ${e.message}` };
+    mostrarToast(`❌ Error de red: ${e.message}`);
+    agregarLog(`❌ autoDetectarChatId: ${e.message}`);
+    return null;
   }
 }
 
