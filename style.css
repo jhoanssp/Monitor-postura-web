@@ -560,3 +560,150 @@ code {
   }
   .main-panel { height: 60vh; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANTALLA FINAL
+   Overlay que cubre el main-panel al detener la deteccion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pantalla-final {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(13, 17, 23, 0.97);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .4s ease;
+}
+
+.pantalla-final.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.pf-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 48px;
+  max-width: 520px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.pf-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+}
+
+.pf-titulo {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.3px;
+}
+
+.pf-subtitulo {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: -8px;
+}
+
+.pf-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.pf-stat {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pf-stat-val {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  transition: color .3s;
+}
+
+.pf-stat-key {
+  font-size: 10px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.pf-peor-wrap {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  padding: 12px 20px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pf-peor-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pf-peor-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-mid);
+  text-align: right;
+}
+
+.pf-nota {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  max-width: 380px;
+}
+
+.pf-btn-reiniciar {
+  margin-top: 4px;
+  padding: 11px 32px;
+  font-size: 14px;
+  letter-spacing: .2px;
+}
+
+/* El main-panel necesita position relative para que el overlay lo cubra */
+.main-panel { position: relative; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ESPEJO VISUAL
+   Se aplica via JS (aplicarEspejo / quitarEspejo).
+   Solo afecta la presentacion — la logica de landmarks no cambia.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.webcam,
+.output-canvas {
+  /* La transicion suaviza el flip al iniciar/detener */
+  transition: transform .3s ease;
+}

@@ -2,10 +2,13 @@
  * main.js
  * Control de camara, modos de deteccion e inicializacion de la app.
  * Punto de entrada principal — depende de todos los otros modulos.
+ *
+ * Cambios:
+ *  - Pantalla final al detener (agradecimiento + stats + boton reiniciar)
+ *  - Espejo horizontal en el canvas (solo visual, logica intacta)
  */
 
 // ── Estado global de sesion ────────────────────────────────────────────────
-// (compartido con pose.js, telegram.js, db.js via window scope)
 let modoActivo      = "auto";
 let tipoActual      = "frontal";
 let switchCand      = null;
@@ -23,7 +26,6 @@ let alertasEnv      = 0;
 const USER_UUID = (() => {
   let id = localStorage.getItem("user_uuid");
   if (!id) {
-    // Generar UUID v4 simple sin dependencias
     id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
       const r = Math.random() * 16 | 0;
       return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
@@ -32,6 +34,67 @@ const USER_UUID = (() => {
   }
   return id;
 })();
+
+// ── Espejo visual ─────────────────────────────────────────────────────────
+// Solo afecta la presentacion en pantalla. La logica de landmarks no cambia.
+function aplicarEspejo() {
+  const canvas  = document.getElementById("output-canvas");
+  const webcam  = document.getElementById("webcam");
+  if (canvas) canvas.style.transform = "scaleX(-1)";
+  if (webcam) webcam.style.transform  = "scaleX(-1)";
+}
+
+function quitarEspejo() {
+  const canvas  = document.getElementById("output-canvas");
+  const webcam  = document.getElementById("webcam");
+  if (canvas) canvas.style.transform = "scaleX(1)";
+  if (webcam) webcam.style.transform  = "scaleX(1)";
+}
+
+// ── Pantalla de resultado final ───────────────────────────────────────────
+function mostrarPantallaFinal(durS, pctOk, totalFrames) {
+  const overlay = document.getElementById("pantalla-final");
+  if (!overlay) return;
+
+  // Calcular postura mas frecuente que no sea OK
+  const sorted = Object.entries(conteoPost)
+    .filter(([k]) => k !== POSTURA_OK)
+    .sort(([, a], [, b]) => b - a);
+  const peorLabel = sorted.length > 0
+    ? (POSTURE_LABELS[sorted[0][0]] || sorted[0][0])
+    : "Ninguna";
+
+  // Llenar datos
+  const el = id => document.getElementById(id);
+  const durMin = Math.floor(durS / 60);
+  const durSec = durS % 60;
+
+  if (el("res-duracion"))  el("res-duracion").textContent  = `${durMin}m ${durSec}s`;
+  if (el("res-correcta"))  el("res-correcta").textContent  = `${pctOk}%`;
+  if (el("res-frames"))    el("res-frames").textContent    = totalFrames;
+  if (el("res-alertas"))   el("res-alertas").textContent   = alertasEnv;
+  if (el("res-peor"))      el("res-peor").textContent      = peorLabel;
+
+  // Color del porcentaje segun resultado
+  const pctEl = el("res-correcta");
+  if (pctEl) {
+    const p = parseFloat(pctOk);
+    pctEl.style.color = p >= 75 ? "var(--color-ok)"
+                      : p >= 50 ? "var(--color-mid)"
+                      :           "var(--color-warn)";
+  }
+
+  overlay.classList.remove("hidden");
+  overlay.classList.add("visible");
+}
+
+function ocultarPantallaFinal() {
+  const overlay = document.getElementById("pantalla-final");
+  if (overlay) {
+    overlay.classList.remove("visible");
+    overlay.classList.add("hidden");
+  }
+}
 
 // ── Control de camara ─────────────────────────────────────────────────────
 async function iniciarDeteccion() {
@@ -43,7 +106,9 @@ async function iniciarDeteccion() {
   ultimaAlerta    = {};
   tMalaInicio     = null;
 
+  ocultarPantallaFinal();
   agregarLog("Iniciando deteccion...");
+
   const videoEl = document.getElementById("webcam");
 
   try {
@@ -70,12 +135,12 @@ async function iniciarDeteccion() {
       width: CAMERA_WIDTH, height: CAMERA_HEIGHT,
     });
     await camera.start();
+
+    // Espejo visual al iniciar
+    aplicarEspejo();
+
     agregarLog("Camara iniciada");
-
-    // Abrir sesion en Supabase
     await dbIniciarSesion(USER_UUID, modoActivo, true);
-
-    // Notificar por Telegram
     await enviarConexionOk();
 
   } catch (err) {
@@ -91,24 +156,30 @@ async function detenerDeteccion() {
   try { if (camera) { camera.stop(); camera = null; } } catch (e) {}
   try { if (pose)   { await pose.close(); pose = null; } } catch (e) {}
 
+  // Quitar espejo al detener
+  quitarEspejo();
+
   agregarLog("Deteccion detenida");
 
-  // Estadisticas finales
   const total  = Object.values(conteoPost).reduce((a, b) => a + b, 0) || 1;
   const pctOk  = (((conteoPost[POSTURA_OK] || 0) / total) * 100).toFixed(1);
+  const durS   = Math.round((Date.now() - sesionInicio) / 1000);
 
-  // Cerrar sesion en Supabase con duracion y estadisticas
+  // Cerrar sesion en Supabase
   await dbCerrarSesion(total, alertasEnv, pctOk);
 
   // Resumen por Telegram
   await enviarResumen();
+
+  // Mostrar pantalla de resultado
+  mostrarPantallaFinal(durS, pctOk, total);
 }
 
 // ── Modos de deteccion ────────────────────────────────────────────────────
 function setModo(modo) {
   modoActivo = modo;
-  tipoActual = modo === "auto"             ? "frontal"
-             : modo === "lateral-frontal"  ? "lateral"
+  tipoActual = modo === "auto"            ? "frontal"
+             : modo === "lateral-frontal" ? "lateral"
              : modo;
   switchCand = null; switchTS = null;
   actualizarBadgeModo();
@@ -136,6 +207,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btn-iniciar")?.addEventListener("click", iniciarDeteccion);
   document.getElementById("btn-detener")?.addEventListener("click", detenerDeteccion);
 
+  // Boton reiniciar de pantalla final
+  document.getElementById("btn-reiniciar")?.addEventListener("click", () => {
+    location.reload();
+  });
+
   // Sidebar Telegram
   document.getElementById("btn-guardar-tg-sidebar")?.addEventListener("click", () => {
     const c = document.getElementById("tg-chat-id-sidebar")?.value.trim();
@@ -146,7 +222,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.getElementById("btn-autodetect-sb")?.addEventListener("click", async (e) => {
-    const btn = e.target;
+    const btn  = e.target;
     const orig = btn.textContent;
     btn.textContent = "Buscando..."; btn.disabled = true;
     try {

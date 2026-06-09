@@ -287,6 +287,46 @@
         <span class="stat-key">% Correcta</span>
       </div>
     </div>
+
+    <!-- ── PANTALLA FINAL — visible al detener deteccion ── -->
+    <div id="pantalla-final" class="pantalla-final hidden">
+      <div class="pf-card">
+        <img src="img/logo.png" alt="Logo" class="pf-logo" onerror="this.style.display='none'"/>
+        <h2 class="pf-titulo">Sesion finalizada</h2>
+        <p class="pf-subtitulo">Gracias por contribuir al estudio de posturas ergonomicas</p>
+
+        <div class="pf-stats">
+          <div class="pf-stat">
+            <span class="pf-stat-val" id="res-duracion">--</span>
+            <span class="pf-stat-key">Duracion</span>
+          </div>
+          <div class="pf-stat">
+            <span class="pf-stat-val" id="res-correcta">--</span>
+            <span class="pf-stat-key">Postura correcta</span>
+          </div>
+          <div class="pf-stat">
+            <span class="pf-stat-val" id="res-frames">--</span>
+            <span class="pf-stat-key">Frames analizados</span>
+          </div>
+          <div class="pf-stat">
+            <span class="pf-stat-val" id="res-alertas">--</span>
+            <span class="pf-stat-key">Alertas enviadas</span>
+          </div>
+        </div>
+
+        <div class="pf-peor-wrap">
+          <span class="pf-peor-label">Postura a mejorar</span>
+          <span class="pf-peor-val" id="res-peor">--</span>
+        </div>
+
+        <p class="pf-nota">Tus datos han sido registrados de forma anonima para apoyar la investigacion academica sobre ergonomia postural.</p>
+
+        <button class="btn-primary pf-btn-reiniciar" id="btn-reiniciar">
+          Realizar nueva sesion
+        </button>
+      </div>
+    </div>
+
   </main>
 </div>
 
