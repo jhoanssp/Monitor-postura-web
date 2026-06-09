@@ -291,7 +291,11 @@
     <!-- ── PANTALLA FINAL — visible al detener deteccion ── -->
     <div id="pantalla-final" class="pantalla-final hidden">
       <div class="pf-card">
-        <img src="img/logo.png" alt="Logo" class="pf-logo" onerror="this.style.display='none'"/>
+        <div class="pf-logo-wrap">
+          <img src="img/logo.png" alt="Logo" class="pf-logo"
+               onerror="this.style.display='none'; document.getElementById('pf-logo-fallback').style.display='flex';"/>
+          <div id="pf-logo-fallback" class="pf-logo-fallback" style="display:none">MP</div>
+        </div>
         <h2 class="pf-titulo">Sesion finalizada</h2>
         <p class="pf-subtitulo">Gracias por contribuir al estudio de posturas ergonomicas</p>
 

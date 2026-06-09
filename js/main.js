@@ -244,6 +244,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       .then(() => mostrarToast(`Copiado: ${BOT_USERNAME}`));
   });
 
+  // Validar conexion con Supabase antes de arrancar
+  await dbValidarConexion();
+
   // Cargar modelos ONNX
   await cargarModelos();
   setModo("auto");

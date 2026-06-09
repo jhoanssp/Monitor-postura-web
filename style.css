@@ -707,3 +707,18 @@ code {
   /* La transicion suaviza el flip al iniciar/detener */
   transition: transform .3s ease;
 }
+
+/* Logo fallback en pantalla final */
+.pf-logo-wrap {
+  position: relative;
+  width: 64px; height: 64px;
+}
+.pf-logo-fallback {
+  width: 64px; height: 64px;
+  background: var(--color-acc);
+  border-radius: var(--radius-md);
+  align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700;
+  color: #fff;
+}

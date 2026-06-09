@@ -57,26 +57,58 @@ async function clasificar(landmarks, tipo) {
   for (let i = 0; i < proba.length; i++) {
     if (proba[i] > maxP) { maxP = proba[i]; maxI = i; }
   }
-  return { clase: meta.clases[maxI], confianza: maxP, landmarks };
+  return { clase: meta.clases[maxI], confianza: maxP };
+}
+
+// ── Calculo de dx ─────────────────────────────────────────────────────────
+// dx = distancia horizontal entre hombros, normalizada [0..1].
+// Frontal: ambos hombros visibles -> dx alto (0.15 - 0.35)
+// Lateral: solo perfil visible   -> dx bajo (0.00 - 0.06)
+function calcDx(landmarks) {
+  const l = landmarks[11], r = landmarks[12];
+  if (!l || !r) return null;
+  // Usar visibilidad si esta disponible para mejorar la deteccion
+  const visOk = (l.visibility ?? 1) > 0.3 && (r.visibility ?? 1) > 0.3;
+  if (!visOk) return null;
+  return Math.abs(l.x - r.x);
 }
 
 // ── Auto-switch frontal / lateral ─────────────────────────────────────────
-function calcDx(landmarks) {
-  const l = landmarks[11], r = landmarks[12];
-  return (l && r) ? Math.abs(l.x - r.x) : null;
-}
-
 function evaluarSwitch(dx) {
   if (modoActivo !== "auto") return;
+
   const cand = dx > UMBRAL_FRONTAL ? "frontal"
              : dx < UMBRAL_LATERAL ? "lateral"
-             : null;
-  if (!cand || cand === tipoActual) { switchCand = null; switchTS = null; return; }
-  if (switchCand !== cand)          { switchCand = cand; switchTS = Date.now(); return; }
-  if (Date.now() - switchTS >= SWITCH_DELAY_MS) {
-    tipoActual = cand;
+             : null;  // zona gris: mantener tipo actual
+
+  // Actualizar indicador de dx en UI
+  const dxEl = document.getElementById("dx-label");
+  if (dxEl) {
+    const zona = dx > UMBRAL_FRONTAL ? "F" : dx < UMBRAL_LATERAL ? "L" : "?";
+    dxEl.textContent = `dx: ${dx.toFixed(3)} [${zona}]`;
+  }
+
+  if (!cand || cand === tipoActual) {
+    // No hay candidato claro o ya estamos en el tipo correcto
     switchCand = null; switchTS = null;
-    agregarLog(`Auto-switch: ${tipoActual.toUpperCase()}`);
+    return;
+  }
+
+  // Nuevo candidato diferente al actual
+  if (switchCand !== cand) {
+    switchCand = cand;
+    switchTS   = Date.now();
+    agregarLog(`Switch pendiente -> ${cand.toUpperCase()} (dx=${dx.toFixed(3)})`);
+    return;
+  }
+
+  // Mismo candidato — verificar si paso el delay
+  if (Date.now() - switchTS >= SWITCH_DELAY_MS) {
+    const anterior = tipoActual;
+    tipoActual  = cand;
+    switchCand  = null;
+    switchTS    = null;
+    agregarLog(`Auto-switch: ${anterior.toUpperCase()} -> ${tipoActual.toUpperCase()} (dx=${dx.toFixed(3)})`);
     actualizarBadgeModo();
   }
 }
@@ -114,7 +146,6 @@ async function procesarFrame(landmarks) {
   tickMala(clase !== POSTURA_OK, clase);
 
   // Guardar frame muestreado en Supabase
-  // Los landmarks se convierten a objeto plano para JSON
   const landmarksPlano = landmarks.map((lm, i) => ({
     index: i,
     x: lm.x, y: lm.y, z: lm.z,
