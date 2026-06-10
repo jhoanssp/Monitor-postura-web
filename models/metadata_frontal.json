@@ -113,14 +113,14 @@
     "right_foot_index_y",
     "right_foot_index_z"
   ],
-  "cv_accuracy": 0.987,
-  "cv_std": 0.0065,
-  "total_frames": 1229,
+  "cv_accuracy": 0.9889,
+  "cv_std": 0.0043,
+  "total_frames": 1176,
   "frames_por_clase": {
-    "TLB": 131,
-    "TLF": 211,
-    "TLL": 144,
-    "TLR": 143,
-    "TUP": 600
+    "TLB": 150,
+    "TLF": 216,
+    "TLL": 162,
+    "TLR": 153,
+    "TUP": 495
   }
 }
