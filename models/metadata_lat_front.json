@@ -110,15 +110,15 @@
     "right_foot_index_y",
     "right_foot_index_z"
   ],
-  "cv_accuracy": 0.9854,
-  "cv_std": 0.0089,
-  "total_frames": 1374,
+  "cv_accuracy": 0.9941,
+  "cv_std": 0.0027,
+  "total_frames": 3055,
   "frames_por_clase": {
-    "TLB": 198,
-    "TLF": 198,
-    "TLL": 197,
-    "TLR": 198,
-    "TUP": 583
+    "TLB": 612,
+    "TLF": 615,
+    "TLL": 305,
+    "TLR": 611,
+    "TUP": 912
   },
   "dataset": "Datos propios - camara lat/front ~30-45deg (ThinkPad E490)",
   "tarea": "upper_body_lat_front",
