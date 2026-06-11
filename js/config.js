@@ -5,17 +5,17 @@
 
 // ── Umbrales de switch por modo ───────────────────────────────────────────
 //
-// AUTO  (frontal <-> lat_frontal):
+// AUTO  (frontal <-> lat_front):
 //   Camara integrada del portatil. Cuando la giras de lado, ambos hombros
 //   siguen siendo parcialmente visibles pero con dx muy reducido.
-//   Umbral mas bajo porque lat_frontal aun muestra algo de los dos hombros.
+//   Umbral mas bajo porque lat_front aun muestra algo de los dos hombros.
 //
 // AUTO2 (frontal <-> lateral):
 //   Camara externa al costado. Vista de perfil puro: solo se ve un hombro.
 //   Umbral aun mas bajo porque el dx cae casi a 0.
 //
 const UMBRALES = {
-  auto:  { frontal: 0.18, lateral: 0.08 },  // frontal <-> lat_frontal
+  auto:  { frontal: 0.18, lateral: 0.08 },  // frontal <-> lat_front
   auto2: { frontal: 0.15, lateral: 0.04 },  // frontal <-> lateral puro
 };
 

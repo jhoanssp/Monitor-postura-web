@@ -3,9 +3,9 @@
  * Inferencia ONNX, auto-switch mejorado (sin depender de visibility),
  * loop principal y dibujo en canvas.
  *
- * Modelos disponibles: frontal | lateral | lat_frontal
+ * Modelos disponibles: frontal | lateral | lat_front
  * Modos:
- *   auto  = frontal <-> lat_frontal  (camara integrada girada)
+ *   auto  = frontal <-> lat_front  (camara integrada girada)
  *   auto2 = frontal <-> lateral      (camara externa al costado)
  */
 
@@ -13,7 +13,7 @@ let modelos = {};
 
 // ── Carga de modelos ONNX ─────────────────────────────────────────────────
 async function cargarModelos() {
-  const lista = ["frontal", "lateral", "lat_frontal"];
+  const lista = ["frontal", "lateral", "lat_front"];
   for (const tipo of lista) {
     try {
       agregarLog(`Cargando modelo ${tipo}...`);
@@ -84,9 +84,9 @@ function calcDx(landmarks) {
 }
 
 // ── Auto-switch mejorado ──────────────────────────────────────────────────
-// Funciona para AUTO (frontal<->lat_frontal) y AUTO2 (frontal<->lateral).
+// Funciona para AUTO (frontal<->lat_front) y AUTO2 (frontal<->lateral).
 function tipoSecundario() {
-  return modoActivo === "auto2" ? "lateral" : "lat_frontal";
+  return modoActivo === "auto2" ? "lateral" : "lat_front";
 }
 
 function evaluarSwitch(dx) {
@@ -138,7 +138,7 @@ function tipoEfectivo() {
   switch (modoActivo) {
     case "auto":
     case "auto2":     return tipoActual;
-    case "lat-front": return "lat_frontal";
+    case "lat-front": return "lat_front";
     case "lateral":   return "lateral";
     case "frontal":
     default:          return "frontal";
@@ -212,7 +212,7 @@ function dibujarPose(results) {
   if (results.poseLandmarks) {
     const tipo  = tipoEfectivo();
     const color = tipo === "frontal"    ? "var(--color-ok)"
-                : tipo === "lat_frontal"? "var(--color-mid)"
+                : tipo === "lat_front"? "var(--color-mid)"
                 :                         "var(--color-info)";
     drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
       { color: "#ffffff22", lineWidth: 2 });

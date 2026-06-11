@@ -93,6 +93,8 @@ async function iniciarDeteccion() {
       enableSegmentation: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
     });
     pose.onResults(async results => {
+      // Ignorar frames que lleguen despues de detener
+      if (!deteccionActiva) return;
       dibujarPose(results);
       if (results.poseLandmarks) await procesarFrame(results.poseLandmarks);
       else { mostrarEstado("Sin persona", null, 0); tickMala(false); }
@@ -115,8 +117,20 @@ async function iniciarDeteccion() {
 async function detenerDeteccion() {
   if (!deteccionActiva) return;
   deteccionActiva = false;
+
+  // Detener camara primero para que no envie mas frames a pose
   try { if (camera) { camera.stop(); camera = null; } } catch(e) {}
-  try { if (pose)   { await pose.close(); pose = null; } } catch(e) {}
+
+  // Esperar un tick para que el ultimo frame en vuelo termine
+  await new Promise(r => setTimeout(r, 150));
+
+  // Cerrar pose — ignorar BindingError si WebGL ya se destruyo
+  if (pose) {
+    try { await pose.close(); } catch(e) {
+      // BindingError normal al cerrar WebGL context — no es un error critico
+    }
+    pose = null;
+  }
   quitarEspejo();
   agregarLog("Deteccion detenida");
   const total = Object.values(conteoPost).reduce((a,b) => a+b, 0) || 1;
@@ -135,7 +149,7 @@ function setModo(modo) {
     case "auto":      tipoActual = "frontal";    break;
     case "auto2":     tipoActual = "frontal";    break;
     case "frontal":   tipoActual = "frontal";    break;
-    case "lat-front": tipoActual = "lat_frontal"; break;
+    case "lat-front": tipoActual = "lat_front"; break;
     case "lateral":   tipoActual = "lateral";    break;
   }
   switchCand = null; switchTS = null;
