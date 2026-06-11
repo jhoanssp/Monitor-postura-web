@@ -1,14 +1,20 @@
 /**
  * pose.js
- * Carga de modelos ONNX, inferencia con MediaPipe Pose,
- * logica de auto-switch frontal/lateral, y dibujo en canvas.
+ * Inferencia ONNX, auto-switch mejorado (sin depender de visibility),
+ * loop principal y dibujo en canvas.
+ *
+ * Modelos disponibles: frontal | lateral | lat_frontal
+ * Modos:
+ *   auto  = frontal <-> lat_frontal  (camara integrada girada)
+ *   auto2 = frontal <-> lateral      (camara externa al costado)
  */
 
 let modelos = {};
 
 // ── Carga de modelos ONNX ─────────────────────────────────────────────────
 async function cargarModelos() {
-  for (const tipo of ["frontal", "lateral"]) {
+  const lista = ["frontal", "lateral", "lat_frontal"];
+  for (const tipo of lista) {
     try {
       agregarLog(`Cargando modelo ${tipo}...`);
       const [sess_sc, sess_m, meta] = await Promise.all([
@@ -19,7 +25,7 @@ async function cargarModelos() {
       modelos[tipo] = { sess_sc, sess_m, meta };
       agregarLog(`Modelo ${tipo} listo (${meta.clases.join(", ")})`);
     } catch (err) {
-      agregarLog(`Modelo ${tipo}: ${err.message}`);
+      agregarLog(`Modelo ${tipo}: no disponible — ${err.message}`);
     }
   }
 }
@@ -41,8 +47,8 @@ async function clasificar(landmarks, tipo) {
     }
   }
 
-  const tIn    = new ort.Tensor("float32", feat, [1, feat.length]);
-  const scaled = await sess_sc.run({ float_input: tIn });
+  const tIn     = new ort.Tensor("float32", feat, [1, feat.length]);
+  const scaled  = await sess_sc.run({ float_input: tIn });
   const tScaled = scaled[Object.keys(scaled)[0]];
   const result  = await sess_m.run({ float_input: tScaled });
 
@@ -61,40 +67,54 @@ async function clasificar(landmarks, tipo) {
 }
 
 // ── Calculo de dx ─────────────────────────────────────────────────────────
-// dx = distancia horizontal entre hombros, normalizada [0..1].
-// Frontal: ambos hombros visibles -> dx alto (0.15 - 0.35)
-// Lateral: solo perfil visible   -> dx bajo (0.00 - 0.06)
+// dx = distancia horizontal entre hombros normalizada [0..1].
+// NO usa visibility — poco fiable en camaras integradas de baja calidad.
+// En su lugar promedia los ultimos N frames para estabilizar.
+const _dxBuffer = [];
+const _DX_BUF   = 8; // frames a promediar
+
 function calcDx(landmarks) {
   const l = landmarks[11], r = landmarks[12];
   if (!l || !r) return null;
-  // Usar visibilidad si esta disponible para mejorar la deteccion
-  const visOk = (l.visibility ?? 1) > 0.3 && (r.visibility ?? 1) > 0.3;
-  if (!visOk) return null;
-  return Math.abs(l.x - r.x);
+  const dx = Math.abs(l.x - r.x);
+  _dxBuffer.push(dx);
+  if (_dxBuffer.length > _DX_BUF) _dxBuffer.shift();
+  // Media del buffer — elimina picos de un solo frame
+  return _dxBuffer.reduce((a, b) => a + b, 0) / _dxBuffer.length;
 }
 
-// ── Auto-switch frontal / lateral ─────────────────────────────────────────
+// ── Auto-switch mejorado ──────────────────────────────────────────────────
+// Funciona para AUTO (frontal<->lat_frontal) y AUTO2 (frontal<->lateral).
+function tipoSecundario() {
+  return modoActivo === "auto2" ? "lateral" : "lat_frontal";
+}
+
 function evaluarSwitch(dx) {
-  if (modoActivo !== "auto") return;
+  if (modoActivo !== "auto" && modoActivo !== "auto2") return;
 
-  const cand = dx > UMBRAL_FRONTAL ? "frontal"
-             : dx < UMBRAL_LATERAL ? "lateral"
-             : null;  // zona gris: mantener tipo actual
+  const umbrales = UMBRALES[modoActivo];
+  const secundario = tipoSecundario();
 
-  // Actualizar indicador de dx en UI
+  // Determinar candidato segun dx promediado
+  const cand = dx > umbrales.frontal   ? "frontal"
+             : dx < umbrales.lateral   ? secundario
+             : null; // zona gris: no cambiar
+
+  // Actualizar indicador en UI
   const dxEl = document.getElementById("dx-label");
   if (dxEl) {
-    const zona = dx > UMBRAL_FRONTAL ? "F" : dx < UMBRAL_LATERAL ? "L" : "?";
+    const zona = dx > umbrales.frontal ? "F"
+               : dx < umbrales.lateral ? "L" : "?";
     dxEl.textContent = `dx: ${dx.toFixed(3)} [${zona}]`;
   }
 
   if (!cand || cand === tipoActual) {
-    // No hay candidato claro o ya estamos en el tipo correcto
-    switchCand = null; switchTS = null;
+    // Sin candidato nuevo o ya estamos en el correcto — resetear contador
+    if (cand === tipoActual) { switchCand = null; switchTS = null; }
     return;
   }
 
-  // Nuevo candidato diferente al actual
+  // Nuevo candidato
   if (switchCand !== cand) {
     switchCand = cand;
     switchTS   = Date.now();
@@ -102,21 +122,27 @@ function evaluarSwitch(dx) {
     return;
   }
 
-  // Mismo candidato — verificar si paso el delay
+  // Mismo candidato sostenido — confirmar si paso el delay
   if (Date.now() - switchTS >= SWITCH_DELAY_MS) {
     const anterior = tipoActual;
     tipoActual  = cand;
     switchCand  = null;
     switchTS    = null;
-    agregarLog(`Auto-switch: ${anterior.toUpperCase()} -> ${tipoActual.toUpperCase()} (dx=${dx.toFixed(3)})`);
+    _dxBuffer.length = 0; // limpiar buffer al cambiar
+    agregarLog(`Switch confirmado: ${anterior.toUpperCase()} -> ${tipoActual.toUpperCase()} (dx=${dx.toFixed(3)})`);
     actualizarBadgeModo();
   }
 }
 
 function tipoEfectivo() {
-  if (modoActivo === "auto")            return tipoActual;
-  if (modoActivo === "lateral-frontal") return "lateral";
-  return modoActivo;
+  switch (modoActivo) {
+    case "auto":
+    case "auto2":     return tipoActual;
+    case "lat-front": return "lat_frontal";
+    case "lateral":   return "lateral";
+    case "frontal":
+    default:          return "frontal";
+  }
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────
@@ -145,13 +171,11 @@ async function procesarFrame(landmarks) {
   mostrarEstado(clase, clase === POSTURA_OK, confianza, dx);
   tickMala(clase !== POSTURA_OK, clase);
 
-  // Guardar frame muestreado en Supabase
+  // Guardar frame muestreado
   const landmarksPlano = landmarks.map((lm, i) => ({
-    index: i,
-    x: lm.x, y: lm.y, z: lm.z,
+    index: i, x: lm.x, y: lm.y, z: lm.z,
     visibility: lm.visibility ?? null,
   }));
-
   await dbInsertarFrame({
     userUuid:     USER_UUID,
     postureLabel: clase,
@@ -186,7 +210,10 @@ function dibujarPose(results) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (results.image) ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
   if (results.poseLandmarks) {
-    const color = tipoEfectivo() === "frontal" ? "var(--color-ok)" : "var(--color-info)";
+    const tipo  = tipoEfectivo();
+    const color = tipo === "frontal"    ? "var(--color-ok)"
+                : tipo === "lat_frontal"? "var(--color-mid)"
+                :                         "var(--color-info)";
     drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
       { color: "#ffffff22", lineWidth: 2 });
     drawLandmarks(ctx, results.poseLandmarks,
