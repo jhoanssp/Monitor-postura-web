@@ -125,6 +125,14 @@ async function dbInsertarFrame(payload) {
   frameCounter++;
   if (frameCounter % SAMPLE_EVERY_N !== 0) return;
 
+  // Normalizar camera_view al valor exacto aceptado por el CHECK constraint
+  const normalizarVista = v => {
+    if (!v) return "frontal";
+    if (v === "lat_front" || v === "lat-front" || v === "lat_frontal") return "lat_front";
+    if (v === "lateral") return "lateral";
+    return "frontal";
+  };
+
   try {
     const body = {
       session_id:      dbSessionId,
@@ -132,7 +140,7 @@ async function dbInsertarFrame(payload) {
       posture_label:   payload.postureLabel,
       confidence:      payload.confidence,
       model_used:      payload.modelUsed,
-      camera_view:     payload.cameraView,
+      camera_view:     normalizarVista(payload.cameraView),
       dx_shoulders:    payload.dxShoulders,
       landmarks:       payload.landmarks,
       is_valid_sample: true,

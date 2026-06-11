@@ -396,6 +396,11 @@ code {
   display: grid; grid-template-columns: 1fr 1fr;
   gap: 6px; margin-bottom: 8px;
 }
+/* Fila de 5 botones: AUTO y AUTO2 en la primera fila completa */
+.btns-modo .btn-modo:first-child,
+.btns-modo .btn-modo:nth-child(2) {
+  grid-column: span 1;
+}
 .btn-modo {
   background: var(--card-2); border: 1px solid var(--border);
   color: var(--text-muted); border-radius: var(--radius-sm);
@@ -721,4 +726,34 @@ code {
   font-family: var(--font-mono);
   font-size: 18px; font-weight: 700;
   color: #fff;
+}
+
+/* ── Toggle landmarks cara ──────────────────────────────────────────────── */
+.card-landmarks {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.btn-toggle-lm {
+  width: 100%;
+  background: var(--card-2);
+  border: 1px solid var(--border-2);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 7px 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  margin-bottom: 6px;
+}
+.btn-toggle-lm.activo {
+  border-color: var(--color-acc);
+  color: var(--color-acc);
+}
+.btn-toggle-lm:hover { border-color: var(--color-acc); color: var(--text); }
+.landmarks-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
 }

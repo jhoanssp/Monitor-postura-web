@@ -9,7 +9,11 @@
  *   auto2 = frontal <-> lateral      (camara externa al costado)
  */
 
-let modelos = {};
+let modelos         = {};
+let mostrarCaraLM   = true;  // toggle landmarks faciales
+
+// Indices de landmarks de la cara (0-10) — se ocultan con el toggle
+const FACE_LM_INDICES = new Set([0,1,2,3,4,5,6,7,8,9,10]);
 
 // ── Carga de modelos ONNX ─────────────────────────────────────────────────
 async function cargarModelos() {
@@ -209,14 +213,37 @@ function dibujarPose(results) {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (results.image) ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-  if (results.poseLandmarks) {
-    const tipo  = tipoEfectivo();
-    const color = tipo === "frontal"    ? "var(--color-ok)"
-                : tipo === "lat_front"? "var(--color-mid)"
-                :                         "var(--color-info)";
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
-      { color: "#ffffff22", lineWidth: 2 });
-    drawLandmarks(ctx, results.poseLandmarks,
-      { color, lineWidth: 1, radius: 4 });
+  if (!results.poseLandmarks) return;
+
+  const tipo  = tipoEfectivo();
+  const color = tipo === "frontal"   ? "var(--color-ok)"
+              : tipo === "lat_front" ? "var(--color-mid)"
+              :                        "var(--color-info)";
+
+  // Filtrar landmarks segun toggle de cara
+  const lms = results.poseLandmarks;
+
+  if (mostrarCaraLM) {
+    // Dibujo completo: conectores + todos los landmarks
+    drawConnectors(ctx, lms, POSE_CONNECTIONS, { color: "#ffffff22", lineWidth: 2 });
+    drawLandmarks(ctx, lms, { color, lineWidth: 1, radius: 4 });
+  } else {
+    // Dibujo sin cara: ocultar conectores y puntos de landmarks 0-10
+    // Dibujar solo conectores entre puntos NO faciales
+    const POSE_CONNECTIONS_BODY = POSE_CONNECTIONS.filter(
+      ([a, b]) => !FACE_LM_INDICES.has(a) && !FACE_LM_INDICES.has(b)
+    );
+    drawConnectors(ctx, lms, POSE_CONNECTIONS_BODY, { color: "#ffffff22", lineWidth: 2 });
+
+    // Dibujar landmarks del cuerpo manualmente (punto a punto)
+    lms.forEach((lm, i) => {
+      if (FACE_LM_INDICES.has(i)) return;
+      const x = lm.x * canvas.width;
+      const y = lm.y * canvas.height;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
   }
 }

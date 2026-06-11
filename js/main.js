@@ -174,6 +174,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btn-detener")?.addEventListener("click", detenerDeteccion);
   document.getElementById("btn-reiniciar")?.addEventListener("click", () => location.reload());
 
+  // Toggle landmarks de cara
+  document.getElementById("btn-toggle-landmarks")?.addEventListener("click", (e) => {
+    mostrarCaraLM = !mostrarCaraLM;
+    const btn = e.target;
+    if (mostrarCaraLM) {
+      btn.textContent = "Cara visible";
+      btn.classList.add("activo");
+    } else {
+      btn.textContent = "Cara oculta";
+      btn.classList.remove("activo");
+    }
+  });
+
   // Sidebar Telegram
   document.getElementById("btn-guardar-tg-sidebar")?.addEventListener("click", () => {
     const c = document.getElementById("tg-chat-id-sidebar")?.value.trim();

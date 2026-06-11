@@ -1,25 +1,23 @@
 /**
  * config.js
  * Constantes de configuracion de la aplicacion.
+ *
+ * UMBRALES AJUSTADOS segun valores reales observados:
+ *   - Frontal puro:    dx ~ 0.35 - 0.45
+ *   - Lat/front ~30d:  dx ~ 0.25 - 0.35
+ *   - Lat/front ~45d:  dx ~ 0.15 - 0.25
+ *   - Lateral puro:    dx ~ 0.00 - 0.08
+ *
+ * AUTO  usa el punto medio entre frontal y lat/front (~30-45 grados):
+ *   Switch a lat_front cuando dx < 0.28  (antes era 0.18 — demasiado bajo)
+ *   Switch a frontal   cuando dx > 0.38  (antes era 0.18 — se pisaban)
  */
-
-// ── Umbrales de switch por modo ───────────────────────────────────────────
-//
-// AUTO  (frontal <-> lat_front):
-//   Camara integrada del portatil. Cuando la giras de lado, ambos hombros
-//   siguen siendo parcialmente visibles pero con dx muy reducido.
-//   Umbral mas bajo porque lat_front aun muestra algo de los dos hombros.
-//
-// AUTO2 (frontal <-> lateral):
-//   Camara externa al costado. Vista de perfil puro: solo se ve un hombro.
-//   Umbral aun mas bajo porque el dx cae casi a 0.
-//
 const UMBRALES = {
-  auto:  { frontal: 0.18, lateral: 0.08 },  // frontal <-> lat_front
-  auto2: { frontal: 0.15, lateral: 0.04 },  // frontal <-> lateral puro
+  auto:  { frontal: 0.38, lateral: 0.28 }, // frontal <-> lat_front
+  auto2: { frontal: 0.15, lateral: 0.05 }, // frontal <-> lateral puro
 };
 
-const SWITCH_DELAY_MS = 2500;   // ms estables antes de confirmar switch
+const SWITCH_DELAY_MS = 2500;
 
 // ── Alertas ───────────────────────────────────────────────────────────────
 const MALA_SEG    = 20;
@@ -27,7 +25,7 @@ const COOLDOWN_MS = 120000;
 const POSTURA_OK  = "TUP";
 
 // ── Muestreo DB ───────────────────────────────────────────────────────────
-const SAMPLE_EVERY_N = 30;  // ~2s a 15fps reales en navegador
+const SAMPLE_EVERY_N = 30;
 
 // ── MediaPipe ─────────────────────────────────────────────────────────────
 const POSE_MODEL_COMPLEXITY = 1;
@@ -70,8 +68,8 @@ const POSTURE_TIPS = {
 
 // ── Descripciones de modos ────────────────────────────────────────────────
 const MODE_DESCRIPTIONS = {
-  auto:        "AUTO: cambia entre frontal y lat/frontal. Ideal para camara integrada girada.",
-  auto2:       "AUTO 2: cambia entre frontal y lateral puro. Ideal para camara externa al costado.",
+  auto:        "AUTO: cambia entre frontal y lat/frontal segun dx de hombros.",
+  auto2:       "AUTO 2: cambia entre frontal y lateral puro. Para camara externa.",
   frontal:     "Fuerza modelo frontal. Camara mirando de frente.",
   "lat-front": "Fuerza modelo lat/frontal. Camara integrada girada de lado.",
   lateral:     "Fuerza modelo lateral puro. Camara externa al costado.",
