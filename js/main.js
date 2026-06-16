@@ -49,17 +49,40 @@ function quitarEspejo() {
 function mostrarPantallaFinal(durS, pctOk, totalFrames) {
   const overlay = document.getElementById("pantalla-final");
   if (!overlay) return;
-  const sorted = Object.entries(conteoPost)
-    .filter(([k]) => k !== POSTURA_OK)
-    .sort(([,a],[,b]) => b - a);
-  const peorLabel = sorted.length
-    ? (POSTURE_LABELS[sorted[0][0]] || sorted[0][0])
-    : "Ninguna";
+
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+
+  // Stats basicos
   set("res-duracion", `${Math.floor(durS/60)}m ${durS%60}s`);
   set("res-frames",   totalFrames);
   set("res-alertas",  alertasEnv);
-  set("res-peor",     peorLabel);
+
+  // Frames correctos (TUP)
+  const framesOk = conteoPost[POSTURA_OK] || 0;
+  set("res-frames-ok", framesOk);
+
+  // Desglose de todas las posturas detectadas
+  const desgloseEl = document.getElementById("res-desglose-lista");
+  if (desgloseEl) {
+    const total = Object.values(conteoPost).reduce((a,b) => a+b, 0) || 1;
+    const orden = ["TUP","TLF","TLB","TLL","TLR"];
+    const filas = orden
+      .filter(k => conteoPost[k])
+      .map(k => {
+        const n   = conteoPost[k] || 0;
+        const pct = ((n / total) * 100).toFixed(1);
+        const lbl = POSTURE_LABELS[k] || k;
+        const color = k === POSTURA_OK ? "var(--color-ok)" : "var(--color-warn)";
+        return `<div class="pf-desglose-fila">
+          <span class="pf-dl-label" style="color:${color}">${lbl}</span>
+          <span class="pf-dl-frames">${n} frames</span>
+          <span class="pf-dl-pct">${pct}%</span>
+        </div>`;
+      }).join("");
+    desgloseEl.innerHTML = filas || "<span style='color:var(--text-dim)'>Sin datos</span>";
+  }
+
+  // Porcentaje postura correcta con color
   const pctEl = document.getElementById("res-correcta");
   if (pctEl) {
     pctEl.textContent = `${pctOk}%`;
@@ -68,6 +91,15 @@ function mostrarPantallaFinal(durS, pctOk, totalFrames) {
                       : p >= 50 ? "var(--color-mid)"
                       :           "var(--color-warn)";
   }
+
+  // Peor postura (la mas frecuente que no sea TUP)
+  const sorted = Object.entries(conteoPost)
+    .filter(([k]) => k !== POSTURA_OK)
+    .sort(([,a],[,b]) => b - a);
+  set("res-peor", sorted.length
+    ? (POSTURE_LABELS[sorted[0][0]] || sorted[0][0])
+    : "Ninguna");
+
   overlay.classList.remove("hidden");
   overlay.classList.add("visible");
 }

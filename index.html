@@ -217,12 +217,15 @@
       <div id="badge-modo" class="badge-modo">AUTO</div>
       <div class="btns-modo">
         <button class="btn-modo activo" data-modo="auto">AUTO</button>
+        <!--
+        Para habilitar modos adicionales, descomentar los botones deseados:
         <button class="btn-modo" data-modo="auto2">AUTO 2</button>
         <button class="btn-modo" data-modo="frontal">FRONTAL</button>
         <button class="btn-modo" data-modo="lat-front">LAT / FRONT</button>
         <button class="btn-modo" data-modo="lateral">LATERAL</button>
+        -->
       </div>
-      <p class="modo-desc" id="modo-desc-text">AUTO: cambia entre frontal y lat/frontal. Ideal para camara integrada girada.</p>
+      <p class="modo-desc" id="modo-desc-text">AUTO: cambia entre frontal y lat/frontal segun la separacion de hombros.</p>
     </div>
 
     <div class="card-controles">
@@ -314,17 +317,35 @@
             <span class="pf-stat-key">Duracion</span>
           </div>
           <div class="pf-stat">
-            <span class="pf-stat-val" id="res-correcta">--</span>
-            <span class="pf-stat-key">Postura correcta</span>
-          </div>
-          <div class="pf-stat">
             <span class="pf-stat-val" id="res-frames">--</span>
             <span class="pf-stat-key">Frames analizados</span>
+          </div>
+          <div class="pf-stat">
+            <span class="pf-stat-val" id="res-frames-ok">--</span>
+            <span class="pf-stat-key">Frames correctos</span>
           </div>
           <div class="pf-stat">
             <span class="pf-stat-val" id="res-alertas">--</span>
             <span class="pf-stat-key">Alertas enviadas</span>
           </div>
+        </div>
+
+        <!-- Desglose posturas detectadas -->
+        <div class="pf-desglose">
+          <div class="pf-desglose-titulo">Posturas detectadas</div>
+          <div id="res-desglose-lista" class="pf-desglose-lista">--</div>
+        </div>
+
+        <!-- Porcentaje postura correcta con explicacion -->
+        <div class="pf-correcta-wrap">
+          <div class="pf-correcta-top">
+            <span class="pf-correcta-label">Postura correcta</span>
+            <span class="pf-correcta-val" id="res-correcta">--</span>
+          </div>
+          <p class="pf-correcta-nota">
+            Porcentaje de frames clasificados como postura erguida (TUP)
+            sobre el total de frames analizados durante la sesion.
+          </p>
         </div>
 
         <div class="pf-peor-wrap">
