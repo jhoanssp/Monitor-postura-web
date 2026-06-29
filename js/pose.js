@@ -15,6 +15,23 @@ let mostrarCaraLM   = true;  // toggle landmarks faciales
 // Indices de landmarks de la cara (0-10) — se ocultan con el toggle
 const FACE_LM_INDICES = new Set([0,1,2,3,4,5,6,7,8,9,10]);
 
+// ── Métrica de tiempo de inferencia (ms/frame) ─────────────────────────────
+// Acumula muestras y reporta el promedio cada N frames sin saturar la consola.
+const _INFER_LOG_EVERY = 50; // imprime promedio cada 50 frames clasificados
+let _inferBuffer = [];
+
+function registrarTiempoInferencia(ms) {
+  _inferBuffer.push(ms);
+  if (_inferBuffer.length >= _INFER_LOG_EVERY) {
+    const prom = _inferBuffer.reduce((a, b) => a + b, 0) / _inferBuffer.length;
+    const max  = Math.max(..._inferBuffer);
+    const min  = Math.min(..._inferBuffer);
+    console.log(`[Inferencia] prom=${prom.toFixed(2)}ms  min=${min.toFixed(2)}ms  max=${max.toFixed(2)}ms  (n=${_inferBuffer.length})`);
+    agregarLog(`Inferencia: ${prom.toFixed(2)} ms/frame (prom. últimos ${_inferBuffer.length})`);
+    _inferBuffer = [];
+  }
+}
+
 // ── Carga de modelos ONNX ─────────────────────────────────────────────────
 async function cargarModelos() {
   const lista = ["frontal", "lateral", "lat_front"];
@@ -162,12 +179,15 @@ async function procesarFrame(landmarks) {
 
   const tipo = tipoEfectivo();
   let res = null;
+  const _t0 = performance.now();
   try {
     res = await clasificar(landmarks, tipo);
   } catch (e) {
     agregarLog(`Inferencia: ${e.message}`);
     return;
   }
+  const _t1 = performance.now();
+  registrarTiempoInferencia(_t1 - _t0);
   if (!res) return;
 
   const { clase, confianza } = res;
