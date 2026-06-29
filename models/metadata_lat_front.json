@@ -110,17 +110,17 @@
     "right_foot_index_y",
     "right_foot_index_z"
   ],
-  "cv_accuracy": 0.9941,
-  "cv_std": 0.0027,
-  "total_frames": 3055,
+  "cv_accuracy": 0.9904,
+  "cv_std": 0.005,
+  "total_frames": 1361,
   "frames_por_clase": {
-    "TLB": 612,
-    "TLF": 615,
-    "TLL": 305,
-    "TLR": 611,
-    "TUP": 912
+    "TLB": 149,
+    "TLF": 217,
+    "TLL": 171,
+    "TLR": 144,
+    "TUP": 680
   },
-  "dataset": "Datos propios - camara lat/front ~30-45deg (ThinkPad E490)",
+  "dataset": "Datos propios — cámara lat/front ~30-45deg (ThinkPad E490)",
   "tarea": "upper_body_lat_front",
   "camara": "lat_front"
 }
