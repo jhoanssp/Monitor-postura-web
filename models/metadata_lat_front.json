@@ -68,20 +68,20 @@
     "right_hip_y",
     "right_hip_z"
   ],
-  "cv_accuracy": 0.9853,
-  "cv_std": 0.0105,
-  "total_frames": 1224,
+  "cv_accuracy": 0.9839,
+  "cv_std": 0.0049,
+  "total_frames": 1176,
   "frames_por_clase": {
-    "TLB": 145,
-    "TLF": 209,
-    "TLL": 145,
-    "TLR": 143,
-    "TUP": 582
+    "TLB": 137,
+    "TLF": 212,
+    "TLL": 146,
+    "TLR": 134,
+    "TUP": 547
   },
   "archivos_entrenamiento": [
     "mis_posturas_lat_front.csv"
   ],
-  "normalizacion": "hombros_cadera_v1",
+  "normalizacion": "hombros_nariz_v2",
   "landmarks_excluidos": [
     "left_ankle",
     "left_foot_index",
