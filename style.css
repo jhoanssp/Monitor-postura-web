@@ -848,3 +848,87 @@ code {
   color: var(--text-dim);
   line-height: 1.5;
 }
+
+/* ── UUID en pantalla final ─────────────────────────────────────────────── */
+.pf-uuid-wrap {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pf-uuid-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.pf-uuid-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pf-uuid-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-acc);
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  flex: 1;
+  word-break: break-all;
+}
+
+.pf-uuid-copy {
+  background: var(--card-2);
+  border: 1px solid var(--border-2);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .2s;
+}
+
+.pf-uuid-copy:hover {
+  border-color: var(--color-acc);
+  color: var(--text);
+}
+
+.pf-uuid-nota {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+/* ── Boton formulario de evaluacion ─────────────────────────────────────── */
+.btn-eval {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: var(--color-ok);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 11px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .2s;
+}
+.btn-eval:hover {
+  background: #2da44e;
+  text-decoration: none;
+  color: #fff;
+}

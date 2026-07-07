@@ -100,6 +100,10 @@ function mostrarPantallaFinal(durS, pctOk, totalFrames) {
     ? (POSTURE_LABELS[sorted[0][0]] || sorted[0][0])
     : "Ninguna");
 
+  // Mostrar UUID para que el usuario lo copie al formulario
+  const uuidEl = document.getElementById("pf-uuid-val");
+  if (uuidEl) uuidEl.textContent = USER_UUID;
+
   overlay.classList.remove("hidden");
   overlay.classList.add("visible");
 }
@@ -205,6 +209,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btn-iniciar")?.addEventListener("click", iniciarDeteccion);
   document.getElementById("btn-detener")?.addEventListener("click", detenerDeteccion);
   document.getElementById("btn-reiniciar")?.addEventListener("click", () => location.reload());
+
+  // Copiar UUID al portapapeles desde pantalla final
+  document.getElementById("btn-copy-uuid")?.addEventListener("click", () => {
+    navigator.clipboard.writeText(USER_UUID)
+      .then(() => {
+        const btn = document.getElementById("btn-copy-uuid");
+        if (btn) { btn.textContent = "Copiado"; setTimeout(() => btn.textContent = "Copiar", 2000); }
+      });
+  });
 
   // Toggle landmarks de cara
   document.getElementById("btn-toggle-landmarks")?.addEventListener("click", (e) => {

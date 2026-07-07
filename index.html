@@ -355,7 +355,22 @@
 
         <p class="pf-nota">Tus datos han sido registrados de forma anonima para apoyar la investigacion academica sobre ergonomia postural.</p>
 
-        <button class="btn-primary pf-btn-reiniciar" id="btn-reiniciar">
+        <div class="pf-uuid-wrap">
+          <span class="pf-uuid-label">Tu UUID de sesion</span>
+          <div class="pf-uuid-row">
+            <code class="pf-uuid-val" id="pf-uuid-val">--</code>
+            <button class="pf-uuid-copy" id="btn-copy-uuid">Copiar</button>
+          </div>
+          <p class="pf-uuid-nota">Necesitaras este codigo en el formulario de evaluacion.</p>
+        </div>
+
+        <a class="btn-eval" 
+           href="https://docs.google.com/forms/d/e/1FAIpQLSe_zto75pOnYVDt_96ticZhWLWwq6tvQDwWoXZAVRt2kJeG3Q/viewform?usp=header" 
+           target="_blank">
+          Ir al formulario de evaluacion
+        </a>
+
+        <button class="btn-ghost pf-btn-reiniciar" id="btn-reiniciar">
           Realizar nueva sesion
         </button>
       </div>
