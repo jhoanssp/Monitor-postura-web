@@ -7,6 +7,13 @@
  * Modos:
  *   auto  = frontal <-> lat_front  (camara integrada girada)
  *   auto2 = frontal <-> lateral      (camara externa al costado)
+ *
+ * ── NOVEDAD ─────────────────────────────────────────────────────────
+ * Antes de clasificar, los landmarks se NORMALIZAN igual que en
+ * entrenamiento.py (recentrado por punto medio de hombros + escalado
+ * por la distancia hombros-nariz). Debe coincidir EXACTO con la
+ * fórmula usada al entrenar, o el modelo recibirá features distintas
+ * a las que aprendió. Ver NORMALIZACION_VERSION.
  */
 
 let modelos         = {};
@@ -14,6 +21,12 @@ let mostrarCaraLM   = true;  // toggle landmarks faciales
 
 // Indices de landmarks de la cara (0-10) — se ocultan con el toggle
 const FACE_LM_INDICES = new Set([0,1,2,3,4,5,6,7,8,9,10]);
+
+// Debe coincidir EXACTO con NORMALIZACION_VERSION en entrenamiento.py.
+// Si no coincide con el metadata de un modelo, se avisa en el log al
+// cargarlo (ver cargarModelos) — significa que el modelo fue
+// entrenado con otra fórmula y hay que reentrenar o actualizar esto.
+const NORMALIZACION_VERSION = "hombros_nariz_v2";
 
 // ── Métrica de tiempo de inferencia (ms/frame) ─────────────────────────────
 // Acumula muestras y reporta el promedio cada N frames sin saturar la consola.
@@ -45,10 +58,60 @@ async function cargarModelos() {
       ]);
       modelos[tipo] = { sess_sc, sess_m, meta };
       agregarLog(`Modelo ${tipo} listo (${meta.clases.join(", ")})`);
+
+      if (meta.normalizacion && meta.normalizacion !== NORMALIZACION_VERSION) {
+        agregarLog(
+          `AVISO: modelo ${tipo} fue entrenado con normalización "${meta.normalizacion}" ` +
+          `pero pose.js usa "${NORMALIZACION_VERSION}". Reentrena el modelo o actualiza pose.js.`
+        );
+      } else if (!meta.normalizacion) {
+        agregarLog(
+          `AVISO: modelo ${tipo} no tiene campo "normalizacion" en su metadata ` +
+          `(modelo viejo, entrenado sin normalizar). Reentrénalo con la versión actual de entrenamiento.py.`
+        );
+      }
     } catch (err) {
       agregarLog(`Modelo ${tipo}: no disponible — ${err.message}`);
     }
   }
+}
+
+// ── Normalización de landmarks (debe ser IDÉNTICA a Python) ────────────────
+// origen = punto medio hombros ; escala = distancia origen-nariz.
+// Devuelve un array nuevo (no muta "landmarks"), o null si faltan los
+// puntos necesarios para calcular la referencia (frame no usable).
+function normalizarLandmarks(landmarks) {
+  const iLS   = POSE_LM_INDEX["LEFT_SHOULDER"];
+  const iRS   = POSE_LM_INDEX["RIGHT_SHOULDER"];
+  const iNose = POSE_LM_INDEX["NOSE"];
+
+  const ls    = landmarks[iLS];
+  const rs    = landmarks[iRS];
+  const nariz = landmarks[iNose];
+  if (!ls || !rs || !nariz) return null;
+
+  const origen = {
+    x: (ls.x + rs.x) / 2,
+    y: (ls.y + rs.y) / 2,
+    z: (ls.z + rs.z) / 2,
+  };
+
+  let escala = Math.sqrt(
+    (origen.x - nariz.x) ** 2 +
+    (origen.y - nariz.y) ** 2 +
+    (origen.z - nariz.z) ** 2
+  );
+  if (escala < 1e-6) escala = 1e-6;
+
+  return landmarks.map((lm) => {
+    if (!lm) return lm;
+    return {
+      ...lm,
+      x: (lm.x - origen.x) / escala,
+      y: (lm.y - origen.y) / escala,
+      z: (lm.z - origen.z) / escala,
+    };
+  });
 }
 
 // ── Inferencia ────────────────────────────────────────────────────────────
@@ -57,14 +120,17 @@ async function clasificar(landmarks, tipo) {
   if (!m) return null;
   const { sess_sc, sess_m, meta } = m;
 
+  const landmarksNorm = normalizarLandmarks(landmarks);
+  if (!landmarksNorm) return null; // faltan hombros/nariz — frame no usable
+
   const feat = new Float32Array(meta.feature_names.length);
   for (let i = 0; i < meta.feature_names.length; i++) {
     const parts = meta.feature_names[i].split("_");
     const coord = parts.pop();
     const lmKey = parts.join("_").toUpperCase();
     const idx   = POSE_LM_INDEX[lmKey];
-    if (idx !== undefined && landmarks[idx]) {
-      feat[i] = landmarks[idx][coord] ?? 0;
+    if (idx !== undefined && landmarksNorm[idx]) {
+      feat[i] = landmarksNorm[idx][coord] ?? 0;
     }
   }
 
@@ -91,6 +157,8 @@ async function clasificar(landmarks, tipo) {
 // dx = distancia horizontal entre hombros normalizada [0..1].
 // NO usa visibility — poco fiable en camaras integradas de baja calidad.
 // En su lugar promedia los ultimos N frames para estabilizar.
+// (Este dx usa las coordenadas CRUDAS del frame, no las normalizadas —
+//  es solo para decidir el auto-switch de vista, no entra al modelo.)
 const _dxBuffer = [];
 const _DX_BUF   = 8; // frames a promediar
 

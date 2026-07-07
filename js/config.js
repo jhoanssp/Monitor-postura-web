@@ -20,7 +20,7 @@ const UMBRALES = {
 const SWITCH_DELAY_MS = 2500;
 
 // ── Alertas ───────────────────────────────────────────────────────────────
-const MALA_SEG    = 20;
+const MALA_SEG    = 300;
 const COOLDOWN_MS = 120000;
 const POSTURA_OK  = "TUP";
 
