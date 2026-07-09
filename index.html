@@ -422,13 +422,13 @@
       el.textContent = BOT_USERNAME;
     });
     const linkEl = document.getElementById("btn-open-bot");
-    if (linkEl) linkEl.href = https://t.me/${BOT_USERNAME.replace("@", "")};
+    if (linkEl) linkEl.href = `https://t.me/${BOT_USERNAME.replace("@", "")}`;
 
     if (TG.CHAT_ID) {
       document.getElementById("tg-saved-block").classList.remove("hidden");
       document.getElementById("tg-manual-block").classList.add("hidden");
       const savedSub = document.getElementById("tg-saved-chatid");
-      if (savedSub) savedSub.textContent = Chat ID: ${TG.CHAT_ID};
+      if (savedSub) savedSub.textContent = `Chat ID: ${TG.CHAT_ID}`;
       document.getElementById("tg-chat-id-modal").value = TG.CHAT_ID;
     } else {
       document.getElementById("tg-saved-block").classList.add("hidden");
@@ -483,8 +483,8 @@
   document.getElementById("btn-copy-botname-modal")
     ?.addEventListener("click", () => {
       navigator.clipboard.writeText(BOT_USERNAME)
-        .then(() => mostrarToast(Copiado: ${BOT_USERNAME}))
-        .catch(() => mostrarToast(Copia manualmente: ${BOT_USERNAME}));
+        .then(() => mostrarToast(`Copiado: ${BOT_USERNAME}`))
+        .catch(() => mostrarToast(`Copia manualmente: ${BOT_USERNAME}`));
     });
 
   // Auto-detectar Chat ID
