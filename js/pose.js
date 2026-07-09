@@ -8,12 +8,17 @@
  *   auto  = frontal <-> lat_front  (camara integrada girada)
  *   auto2 = frontal <-> lateral      (camara externa al costado)
  *
- * ── NOVEDAD ─────────────────────────────────────────────────────────
- * Antes de clasificar, los landmarks se NORMALIZAN igual que en
- * entrenamiento.py (recentrado por punto medio de hombros + escalado
- * por la distancia hombros-nariz). Debe coincidir EXACTO con la
- * fórmula usada al entrenar, o el modelo recibirá features distintas
- * a las que aprendió. Ver NORMALIZACION_VERSION.
+ * ── NOVEDADES ───────────────────────────────────────────────────────
+ * 1) Normalización de landmarks (hombros + nariz) antes de clasificar,
+ *    para que coincida con entrenamiento.py. Ver NORMALIZACION_VERSION.
+ * 2) Espejo REAL a nivel de píxeles del frame antes de pasarlo a
+ *    MediaPipe (ver obtenerFrameEspejado en este archivo), porque
+ *    entrenamiento.py hace cv2.flip(frame, 1) ANTES de correr
+ *    MediaPipe al capturar datos. Antes, el navegador solo espejaba
+ *    visualmente por CSS — los landmarks reales que le llegaban a
+ *    MediaPipe iban SIN espejar, en el sistema de coordenadas
+ *    contrario al de entrenamiento. Esto se usa tanto para la cámara
+ *    principal (aquí) como para la secundaria (pose_dual.js).
  */
 
 let modelos         = {};
@@ -27,23 +32,6 @@ const FACE_LM_INDICES = new Set([0,1,2,3,4,5,6,7,8,9,10]);
 // cargarlo (ver cargarModelos) — significa que el modelo fue
 // entrenado con otra fórmula y hay que reentrenar o actualizar esto.
 const NORMALIZACION_VERSION = "hombros_nariz_v2";
-
-// ── Métrica de tiempo de inferencia (ms/frame) ─────────────────────────────
-// Acumula muestras y reporta el promedio cada N frames sin saturar la consola.
-const _INFER_LOG_EVERY = 50; // imprime promedio cada 50 frames clasificados
-let _inferBuffer = [];
-
-function registrarTiempoInferencia(ms) {
-  _inferBuffer.push(ms);
-  if (_inferBuffer.length >= _INFER_LOG_EVERY) {
-    const prom = _inferBuffer.reduce((a, b) => a + b, 0) / _inferBuffer.length;
-    const max  = Math.max(..._inferBuffer);
-    const min  = Math.min(..._inferBuffer);
-    console.log(`[Inferencia] prom=${prom.toFixed(2)}ms  min=${min.toFixed(2)}ms  max=${max.toFixed(2)}ms  (n=${_inferBuffer.length})`);
-    agregarLog(`Inferencia: ${prom.toFixed(2)} ms/frame (prom. últimos ${_inferBuffer.length})`);
-    _inferBuffer = [];
-  }
-}
 
 // ── Carga de modelos ONNX ─────────────────────────────────────────────────
 async function cargarModelos() {
@@ -67,13 +55,46 @@ async function cargarModelos() {
       } else if (!meta.normalizacion) {
         agregarLog(
           `AVISO: modelo ${tipo} no tiene campo "normalizacion" en su metadata ` +
-          `(modelo viejo, entrenado sin normalizar). Reentrénalo con la versión actual de entrenamiento.py.`
+          `(modelo viejo). Reentrénalo con la versión actual de entrenamiento.py.`
         );
       }
     } catch (err) {
       agregarLog(`Modelo ${tipo}: no disponible — ${err.message}`);
     }
   }
+}
+
+// ── Espejo real de frame (píxeles) antes de MediaPipe ──────────────────────
+// entrenamiento.py hace cv2.flip(frame, 1) antes de correr MediaPipe al
+// capturar datos de entrenamiento. Replicamos exactamente eso aquí, para
+// que los landmarks que salgan de MediaPipe en el navegador estén en el
+// MISMO sistema de coordenadas que los que se usaron para entrenar.
+//
+// Se reutiliza un canvas por cada fuente de video (principal/secundaria)
+// para no crear uno nuevo en cada frame.
+const _flipCanvases = {};
+
+function obtenerFrameEspejado(videoEl, key = "principal") {
+  const w = videoEl.videoWidth  || (typeof CAMERA_WIDTH  !== "undefined" ? CAMERA_WIDTH  : 640);
+  const h = videoEl.videoHeight || (typeof CAMERA_HEIGHT !== "undefined" ? CAMERA_HEIGHT : 480);
+  if (!w || !h) return videoEl; // aún no hay dimensiones — usar el video tal cual por esta vez
+
+  let entry = _flipCanvases[key];
+  if (!entry || entry.canvas.width !== w || entry.canvas.height !== h) {
+    const canvas = document.createElement("canvas");
+    canvas.width  = w;
+    canvas.height = h;
+    entry = { canvas, ctx: canvas.getContext("2d") };
+    _flipCanvases[key] = entry;
+  }
+
+  const { canvas, ctx } = entry;
+  ctx.save();
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(videoEl, 0, 0, w, h);
+  ctx.restore();
+  return canvas;
 }
 
 // ── Normalización de landmarks (debe ser IDÉNTICA a Python) ────────────────
@@ -157,8 +178,6 @@ async function clasificar(landmarks, tipo) {
 // dx = distancia horizontal entre hombros normalizada [0..1].
 // NO usa visibility — poco fiable en camaras integradas de baja calidad.
 // En su lugar promedia los ultimos N frames para estabilizar.
-// (Este dx usa las coordenadas CRUDAS del frame, no las normalizadas —
-//  es solo para decidir el auto-switch de vista, no entra al modelo.)
 const _dxBuffer = [];
 const _DX_BUF   = 8; // frames a promediar
 
@@ -235,6 +254,8 @@ function tipoEfectivo() {
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────
+// En modo dual, esta funcion recibe el frame del video PRINCIPAL (frontal).
+// El frame secundario (lat/front) se procesa en procesarFrameSecundario().
 async function procesarFrame(landmarks) {
   if (!landmarks || !landmarks.length) {
     mostrarEstado("Sin persona", null, 0);
@@ -247,15 +268,12 @@ async function procesarFrame(landmarks) {
 
   const tipo = tipoEfectivo();
   let res = null;
-  const _t0 = performance.now();
   try {
     res = await clasificar(landmarks, tipo);
   } catch (e) {
     agregarLog(`Inferencia: ${e.message}`);
     return;
   }
-  const _t1 = performance.now();
-  registrarTiempoInferencia(_t1 - _t0);
   if (!res) return;
 
   const { clase, confianza } = res;
@@ -279,6 +297,51 @@ async function procesarFrame(landmarks) {
   });
 }
 
+// ── Procesamiento camara secundaria (lat/front) ───────────────────────────
+async function procesarFrameSecundario() {
+  if (!dualModeActivo || !videoSecundario || videoSecundario.readyState < 2) return;
+
+  // Usar pose_secundario si existe, sino crear uno temporal
+  if (!window._poseSecundario) {
+    window._poseSecundario = new Pose({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`,
+    });
+    window._poseSecundario.setOptions({
+      modelComplexity: POSE_MODEL_COMPLEXITY,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    window._poseSecundario.onResults(async results => {
+      dibujarPip(results, results.poseLandmarks);
+      if (!results.poseLandmarks) return;
+
+      // Clasificar con modelo lat/front
+      let res = null;
+      try { res = await clasificar(results.poseLandmarks, "lat_front"); } catch(e) { return; }
+      if (!res) return;
+
+      // Guardar frame secundario en DB con camera_view = lat_front
+      const lmsPlano = results.poseLandmarks.map((lm, i) => ({
+        index: i, x: lm.x, y: lm.y, z: lm.z, visibility: lm.visibility ?? null
+      }));
+      await dbInsertarFrame({
+        userUuid:     USER_UUID,
+        postureLabel: res.clase,
+        confidence:   res.confianza,
+        modelUsed:    "lat_front",
+        cameraView:   "lat_front",
+        dxShoulders:  calcDx(results.poseLandmarks),
+        landmarks:    lmsPlano,
+      });
+    });
+  }
+  // Espejo real (píxeles) antes de MediaPipe — misma convención que Python.
+  const frame = obtenerFrameEspejado(videoSecundario, "secundaria");
+  await window._poseSecundario.send({ image: frame });
+}
+
 // ── Tiempo de mala postura ────────────────────────────────────────────────
 function tickMala(esMala, clase) {
   if (!esMala) { tMalaInicio = null; actualizarBarra(0); return; }
@@ -295,6 +358,10 @@ function tickMala(esMala, clase) {
 }
 
 // ── Dibujo en canvas ──────────────────────────────────────────────────────
+// results.image ya viene espejado (porque le pasamos el frame pre-espejado
+// a MediaPipe), así que se dibuja tal cual — sin CSS mirror adicional en
+// este canvas (ver aplicarEspejo/quitarEspejo en main.js, que ya NO
+// espeja #output-canvas, solo el <video> crudo debajo).
 function dibujarPose(results) {
   const canvas = document.getElementById("output-canvas");
   if (!canvas) return;

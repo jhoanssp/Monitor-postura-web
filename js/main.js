@@ -32,17 +32,19 @@ const USER_UUID = (() => {
 })();
 
 // ── Espejo visual ─────────────────────────────────────────────────────────
+// Solo el <video> crudo se espeja por CSS (para que el usuario se vea
+// natural). #output-canvas YA NO se espeja aquí: dibuja results.image,
+// que viene pre-espejado a nivel de píxeles desde pose.js
+// (obtenerFrameEspejado, aplicado antes de pose.send). Si espejáramos
+// también el canvas por CSS, se anularía el espejo real y quedaría al
+// revés otra vez.
 function aplicarEspejo() {
-  ["output-canvas","webcam"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.transform = "scaleX(-1)";
-  });
+  const el = document.getElementById("webcam");
+  if (el) el.style.transform = "scaleX(-1)";
 }
 function quitarEspejo() {
-  ["output-canvas","webcam"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.transform = "scaleX(1)";
-  });
+  const el = document.getElementById("webcam");
+  if (el) el.style.transform = "scaleX(1)";
 }
 
 // ── Pantalla final ────────────────────────────────────────────────────────
@@ -129,14 +131,26 @@ async function iniciarDeteccion() {
       enableSegmentation: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
     });
     pose.onResults(async results => {
-      // Ignorar frames que lleguen despues de detener
       if (!deteccionActiva) return;
       dibujarPose(results);
       if (results.poseLandmarks) await procesarFrame(results.poseLandmarks);
       else { mostrarEstado("Sin persona", null, 0); tickMala(false); }
+
+      // Procesar camara secundaria en frames alternos para no saturar CPU
+      frameCounter_dual++;
+      if (dualModeActivo && frameCounter_dual % 2 === 0) {
+        await procesarFrameSecundario();
+      }
     });
     camera = new Camera(videoEl, {
-      onFrame: async () => { if (deteccionActiva && pose) await pose.send({ image: videoEl }); },
+      onFrame: async () => {
+        if (deteccionActiva && pose) {
+          // Espejo real (píxeles) antes de MediaPipe — misma convención
+          // que cv2.flip(frame, 1) en entrenamiento.py. Ver pose.js.
+          const frame = obtenerFrameEspejado(videoEl, "principal");
+          await pose.send({ image: frame });
+        }
+      },
       width: CAMERA_WIDTH, height: CAMERA_HEIGHT,
     });
     await camera.start();
@@ -166,6 +180,12 @@ async function detenerDeteccion() {
       // BindingError normal al cerrar WebGL context — no es un error critico
     }
     pose = null;
+  }
+  // Detener camara secundaria y pose secundario si estaban activos
+  desactivarCamaraSecundaria();
+  if (window._poseSecundario) {
+    try { await window._poseSecundario.close(); } catch(e) {}
+    window._poseSecundario = null;
   }
   quitarEspejo();
   agregarLog("Deteccion detenida");
@@ -258,6 +278,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   await dbValidarConexion();
+  // Selector de camara secundaria solo en desktop
+  if (window.innerWidth >= 768) {
+    await poblarSelectorCamaras();
+  } else {
+    const cardDual = document.getElementById("card-camara-dual");
+    if (cardDual) cardDual.style.display = "none";
+  }
+
   await cargarModelos();
   setModo("auto");
   agregarLog("Sistema listo. Presiona Iniciar para comenzar.");

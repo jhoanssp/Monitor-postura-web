@@ -242,6 +242,15 @@
     </div>
 
     <!-- Sidebar Telegram: solo Chat ID -->
+    <!-- Camara secundaria USB (solo desktop, oculta en movil via CSS) -->
+    <div class="card-estado" id="card-camara-dual">
+      <div class="card-label">Camara secundaria</div>
+      <select id="sel-camara-secundaria" class="sel-camara">
+        <option value="">Sin camara secundaria</option>
+      </select>
+      <p class="modo-desc">Conecta una camara USB para monitoreo lat/front simultaneo.</p>
+    </div>
+
     <details class="card-tg" id="tg-details">
       <summary>
         Telegram
@@ -277,6 +286,9 @@
     <div class="video-wrapper">
       <video id="webcam" class="webcam" autoplay muted playsinline></video>
       <canvas id="output-canvas" class="output-canvas" width="640" height="480"></canvas>
+      <!-- Canvas PiP camara secundaria -->
+      <canvas id="canvas-pip" class="canvas-pip hidden" width="213" height="160"></canvas>
+
       <div class="video-overlay-modo">
         <span id="modo-activo-label" class="overlay-modo-label">--</span>
       </div>
@@ -384,6 +396,7 @@
 <script src="js/telegram.js"></script>
 <script src="js/db.js"></script>
 <script src="js/pose.js"></script>
+<script src="js/pose_dual.js"></script>
 <script src="js/main.js"></script>
 
 <!-- Logica del modal — inline porque depende del DOM y de todos los modulos -->
@@ -409,13 +422,13 @@
       el.textContent = BOT_USERNAME;
     });
     const linkEl = document.getElementById("btn-open-bot");
-    if (linkEl) linkEl.href = `https://t.me/${BOT_USERNAME.replace("@", "")}`;
+    if (linkEl) linkEl.href = https://t.me/${BOT_USERNAME.replace("@", "")};
 
     if (TG.CHAT_ID) {
       document.getElementById("tg-saved-block").classList.remove("hidden");
       document.getElementById("tg-manual-block").classList.add("hidden");
       const savedSub = document.getElementById("tg-saved-chatid");
-      if (savedSub) savedSub.textContent = `Chat ID: ${TG.CHAT_ID}`;
+      if (savedSub) savedSub.textContent = Chat ID: ${TG.CHAT_ID};
       document.getElementById("tg-chat-id-modal").value = TG.CHAT_ID;
     } else {
       document.getElementById("tg-saved-block").classList.add("hidden");
@@ -470,8 +483,8 @@
   document.getElementById("btn-copy-botname-modal")
     ?.addEventListener("click", () => {
       navigator.clipboard.writeText(BOT_USERNAME)
-        .then(() => mostrarToast(`Copiado: ${BOT_USERNAME}`))
-        .catch(() => mostrarToast(`Copia manualmente: ${BOT_USERNAME}`));
+        .then(() => mostrarToast(Copiado: ${BOT_USERNAME}))
+        .catch(() => mostrarToast(Copia manualmente: ${BOT_USERNAME}));
     });
 
   // Auto-detectar Chat ID

@@ -932,3 +932,141 @@ code {
   text-decoration: none;
   color: #fff;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAMARA SECUNDARIA — PiP y selector
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sel-camara {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .2s;
+  margin-bottom: 4px;
+}
+.sel-camara:focus { border-color: var(--color-acc); }
+
+/* Canvas PiP — esquina inferior derecha del video-wrapper */
+.canvas-pip {
+  position: absolute;
+  bottom: 48px; /* por encima de la stats-bar */
+  right: 12px;
+  width: 30%;
+  max-width: 213px;
+  aspect-ratio: 4/3;
+  border: 2px solid var(--color-mid);
+  border-radius: var(--radius-md);
+  z-index: 10;
+  background: #000;
+  box-shadow: 0 4px 16px rgba(0,0,0,.6);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — diseño móvil
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Ocultar camara dual en móvil */
+@media (max-width: 767px) {
+  #card-camara-dual { display: none !important; }
+  .canvas-pip       { display: none !important; }
+}
+
+/* Layout móvil general */
+@media (max-width: 767px) {
+  .app {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    width: 100%;
+    min-width: unset;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    /* Grid de dos columnas para aprovechar espacio */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+
+  /* Elementos que ocupan ancho completo en el grid */
+  .sidebar-logo,
+  .card-controles,
+  .card-log {
+    grid-column: 1 / -1;
+  }
+
+  .card-estado,
+  .card-barra,
+  .card-modo,
+  .card-landmarks,
+  .card-tg {
+    grid-column: span 1;
+  }
+
+  /* Botones de modo en 2 columnas */
+  .btns-modo {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Panel de video ocupa toda la pantalla disponible */
+  .main-panel {
+    width: 100%;
+    height: 60vw;
+    min-height: 260px;
+    max-height: 420px;
+  }
+
+  /* Stats bar más compacta */
+  .stats-bar {
+    flex-wrap: wrap;
+  }
+  .stat-item {
+    flex: 0 0 50%;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-item:nth-child(2n) { border-right: none; }
+
+  /* Pantalla final más compacta */
+  .pf-card {
+    padding: 24px 16px;
+  }
+  .pf-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Modal más compacto */
+  .modal-box {
+    padding: 16px;
+    max-height: 95vh;
+  }
+  .welcome-features {
+    grid-template-columns: 1fr;
+  }
+
+  /* Log más pequeño en móvil */
+  .log-box {
+    max-height: 80px;
+    font-size: 9px;
+  }
+}
+
+/* Tablets (768px - 1024px) */
+@media (min-width: 768px) and (max-width: 1024px) {
+  :root { --sidebar-w: 240px; }
+
+  .btns-modo {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pf-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
