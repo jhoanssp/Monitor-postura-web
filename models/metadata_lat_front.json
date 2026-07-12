@@ -1,5 +1,6 @@
 {
   "clasificador": "RandomForestClassifier",
+  "class_weight": "balanced",
   "n_estimators": 200,
   "clases": [
     "TLB",
@@ -68,20 +69,22 @@
     "right_hip_y",
     "right_hip_z"
   ],
-  "cv_accuracy": 0.9868,
-  "cv_std": 0.0039,
-  "total_frames": 2357,
+  "cv_accuracy": 0.8384,
+  "cv_std": 0.1127,
+  "total_frames": 4946,
   "frames_por_clase": {
-    "TLB": 273,
-    "TLF": 424,
-    "TLL": 296,
-    "TLR": 276,
-    "TUP": 1088
+    "TLB": 160,
+    "TLF": 1119,
+    "TLL": 162,
+    "TLR": 958,
+    "TUP": 2547
   },
   "archivos_entrenamiento": [
     "mis_posturas_lat_front.csv",
-    "mis_posturas_lat_front_sesion2.csv"
+    "mis_posturas_lat_front_video_escenario.csv"
   ],
+  "n_sesiones": 2,
+  "cv_agrupado_por_sesion": true,
   "normalizacion": "hombros_nariz_v2",
   "landmarks_excluidos": [
     "left_ankle",
