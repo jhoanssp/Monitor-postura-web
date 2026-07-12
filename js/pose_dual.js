@@ -159,6 +159,9 @@ function actualizarComparacionDual(lado, clase, confianza, tipoUsado) {
 // results.image ya viene espejado desde pose.js (obtenerFrameEspejado se
 // aplica antes de mandarlo a MediaPipe), así que dibujamos tal cual —
 // nada de translate/scale manual ni de "(1 - lm.x)" aquí.
+// NOTA: ya no se dibujan los puntos de landmarks sobre el PiP (a pedido,
+// se queria una vista limpia); el parametro landmarks se conserva por
+// compatibilidad con la firma existente pero no se usa para dibujar.
 function dibujarPip(results, landmarks) {
   const pip = document.getElementById("canvas-pip");
   if (!pip || !dualModeActivo) return;
@@ -169,17 +172,6 @@ function dibujarPip(results, landmarks) {
     ctx.drawImage(results.image, 0, 0, pip.width, pip.height);
   }
 
-  if (landmarks) {
-    landmarks.forEach(lm => {
-      const x = lm.x * pip.width;
-      const y = lm.y * pip.height;
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, 2 * Math.PI);
-      ctx.fillStyle = "var(--color-mid)";
-      ctx.fill();
-    });
-  }
-
   // Label modelo
   ctx.fillStyle = "rgba(0,0,0,0.55)";
   ctx.fillRect(0, 0, pip.width, 20);
@@ -187,3 +179,22 @@ function dibujarPip(results, landmarks) {
   ctx.font = "bold 11px monospace";
   ctx.fillText("LAT/FRONT", 6, 14);
 }
+
+// ── Zoom temporal del PiP con doble click ─────────────────────────────────
+// Doble click sobre la miniatura la agranda 5s para poder ver el detalle,
+// luego vuelve sola a su tamano normal. Un segundo doble click mientras
+// esta ampliada reinicia el temporizador de 5s.
+(function configurarPipAmpliable() {
+  const pip = document.getElementById("canvas-pip");
+  if (!pip) return;
+  let timeoutAmpliado = null;
+
+  pip.addEventListener("dblclick", () => {
+    pip.classList.add("pip-ampliado");
+    if (timeoutAmpliado) clearTimeout(timeoutAmpliado);
+    timeoutAmpliado = setTimeout(() => {
+      pip.classList.remove("pip-ampliado");
+      timeoutAmpliado = null;
+    }, 5000);
+  });
+})();

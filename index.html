@@ -46,6 +46,19 @@
       margin-bottom: 4px;
       word-break: break-word;
     }
+
+    /* Zoom temporal del PiP (doble click, ver pose_dual.js) */
+    #canvas-pip {
+      transition: width 0.25s ease, height 0.25s ease;
+      cursor: zoom-in;
+    }
+    #canvas-pip.pip-ampliado {
+      width: 426px;
+      height: 320px;
+      z-index: 50;
+      cursor: zoom-out;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
   </style>
 
   <!-- Modulos de la aplicacion — orden de dependencias -->
