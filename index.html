@@ -17,6 +17,37 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
 
+  <!-- Estilos minimos para la tarjeta de comparacion dual (frontal vs lat/front).
+       Se mantienen aqui para no tocar style.css; reutilizan las variables de
+       color ya definidas globalmente (--color-ok, --color-warn, --text-dim). -->
+  <style>
+    .dual-compare-row {
+      display: flex;
+      gap: 10px;
+    }
+    .dual-compare-col {
+      flex: 1;
+      text-align: center;
+      min-width: 0;
+    }
+    .dual-compare-col-right {
+      border-left: 1px solid rgba(255,255,255,0.12);
+      padding-left: 10px;
+    }
+    .dual-compare-title {
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    .dual-postura {
+      font-size: 16px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+  </style>
+
   <!-- Modulos de la aplicacion — orden de dependencias -->
   <script src="js/credentials.js"></script>
   <script src="js/config.js"></script>
@@ -249,6 +280,25 @@
         <option value="">Sin camara secundaria</option>
       </select>
       <p class="modo-desc">Conecta una camara USB para monitoreo lat/front simultaneo.</p>
+    </div>
+
+    <!-- Comparacion en vivo: camara principal vs camara secundaria (lat/front).
+         Oculta por defecto; se muestra solo mientras la camara secundaria
+         esta activa (ver actualizarComparacionDual en pose_dual.js). -->
+    <div class="card-estado hidden" id="card-estado-dual">
+      <div class="card-label">Comparacion Frontal vs Lat/Front</div>
+      <div class="dual-compare-row">
+        <div class="dual-compare-col">
+          <div class="dual-compare-title">PRINCIPAL</div>
+          <div id="dual-frontal-postura" class="postura-label dual-postura">--</div>
+          <span id="dual-frontal-conf" class="meta-chip">--</span>
+        </div>
+        <div class="dual-compare-col dual-compare-col-right">
+          <div class="dual-compare-title">LAT/FRONT (USB)</div>
+          <div id="dual-latfront-postura" class="postura-label dual-postura">--</div>
+          <span id="dual-latfront-conf" class="meta-chip">--</span>
+        </div>
+      </div>
     </div>
 
     <details class="card-tg" id="tg-details">

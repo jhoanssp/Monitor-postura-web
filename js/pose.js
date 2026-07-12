@@ -281,6 +281,12 @@ async function procesarFrame(landmarks) {
   mostrarEstado(clase, clase === POSTURA_OK, confianza, dx);
   tickMala(clase !== POSTURA_OK, clase);
 
+  // Si hay camara secundaria activa, reportar tambien a la tarjeta de
+  // comparacion en vivo (columna "PRINCIPAL"). No hace nada si esta oculta.
+  if (typeof actualizarComparacionDual === "function") {
+    actualizarComparacionDual("principal", clase, confianza, tipo);
+  }
+
   // Guardar frame muestreado
   const landmarksPlano = landmarks.map((lm, i) => ({
     index: i, x: lm.x, y: lm.y, z: lm.z,
@@ -321,6 +327,9 @@ async function procesarFrameSecundario() {
       let res = null;
       try { res = await clasificar(results.poseLandmarks, "lat_front"); } catch(e) { return; }
       if (!res) return;
+
+      // Reportar a la tarjeta de comparacion en vivo (columna "LAT/FRONT (USB)")
+      actualizarComparacionDual("secundaria", res.clase, res.confianza, "lat_front");
 
       // Guardar frame secundario en DB con camera_view = lat_front
       const lmsPlano = results.poseLandmarks.map((lm, i) => ({

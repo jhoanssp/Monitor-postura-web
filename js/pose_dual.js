@@ -124,6 +124,35 @@ function desactivarCamaraSecundaria() {
 
   dualModeActivo = false;
   agregarLog("Camara secundaria desactivada");
+
+  // Ocultar tarjeta de comparacion dual — ya no hay dos camaras para comparar.
+  const cardDual = document.getElementById("card-estado-dual");
+  if (cardDual) cardDual.classList.add("hidden");
+}
+
+// ── Comparacion en vivo: camara principal vs camara secundaria ───────────
+// Llamada desde pose.js (lado="principal") y desde el onResults de
+// _poseSecundario en este archivo (lado="secundaria"). Solo pinta algo si
+// dualModeActivo es true; si no, mantiene la tarjeta oculta.
+function actualizarComparacionDual(lado, clase, confianza, tipoUsado) {
+  const card = document.getElementById("card-estado-dual");
+  if (!card) return;
+
+  if (!dualModeActivo) {
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+
+  const prefijo = lado === "principal" ? "dual-frontal" : "dual-latfront";
+  const labelEl = document.getElementById(`${prefijo}-postura`);
+  const confEl  = document.getElementById(`${prefijo}-conf`);
+  if (!labelEl || !confEl) return;
+
+  const texto = POSTURE_LABELS[clase] || clase;
+  labelEl.textContent = texto;
+  labelEl.style.color = clase === POSTURA_OK ? "var(--color-ok)" : "var(--color-warn)";
+  confEl.textContent  = `${Math.round(confianza * 100)}% [${tipoUsado}]`;
 }
 
 // ── Dibujo PiP en canvas secundario ──────────────────────────────────────
